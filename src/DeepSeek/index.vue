@@ -14,12 +14,12 @@ const TOKEN_KEYS = ['userToken', 'token', 'accessToken', 'auth_token', 'Authoriz
 
 let monitorTimer: any = null
 let capturedSession = false
+let ubrowserId: number | null = null
 
 onMounted(() => {
   const session = loadSession()
   capturedSession = !!session
   openDeepSeek(session)
-  startMonitor()
 })
 
 onBeforeUnmount(() => {
@@ -74,6 +74,10 @@ function openDeepSeek(session: any) {
   }
 
   chain.run({ show: true, width: 1280, height: 720 }).then((results: any[]) => {
+    // 记录 ubrowser 实例 ID，用于精准监控
+    const instance = results[results.length - 1]
+    ubrowserId = instance?.id || null
+
     if (!capturedSession) {
       let ls: any = null
       let ck: any = null
@@ -84,22 +88,25 @@ function openDeepSeek(session: any) {
       }
       if (ls || ck) saveSession({ localStorage: ls, cookies: ck })
     }
+    // 链跑完了 → ubrowser 已空闲 → 开始监听关闭
+    startMonitor()
   }).catch(() => {
     clearSession()
+    utools.outPlugin()
   })
 }
 
 function startMonitor() {
   stopMonitor()
-  let checkCount = 0
   monitorTimer = setInterval(() => {
-    checkCount++
+    if (!ubrowserId) return
     const idle = utools.getIdleUBrowsers()
-    if (checkCount > 3 && idle.length === 0) {
+    const alive = idle.some((b: any) => b.id === ubrowserId)
+    if (!alive) {
       stopMonitor()
       utools.outPlugin()
     }
-  }, 1500)
+  }, 2000)
 }
 
 function stopMonitor() {
