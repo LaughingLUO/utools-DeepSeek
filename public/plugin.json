@@ -1,0 +1,17 @@
+{
+  "main": "index.html",
+  "preload": "preload/services.js",
+  "logo": "logo.png",
+  "development": {
+    "main": "http://localhost:5173"
+  },
+  "features": [
+    {
+      "code": "DeepSeek",
+      "explain": "DeepSeek网页版",
+      "cmds": [
+        "DeepSeek"
+      ]
+    }
+  ]
+}
