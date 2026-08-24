@@ -1,6 +1,22 @@
 :root {
-  --blue: rgb(88, 164, 246);
-  --light: #fff;
+  color-scheme: dark;
+  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  background:
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.14), transparent 30%),
+    linear-gradient(180deg, #020617, #0f172a 38%, #111827);
+  color: #f8fafc;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
 }
 
 html,
@@ -9,55 +25,66 @@ body {
   padding: 0;
 }
 
+body {
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
 button {
-  border: none;
-  background: none var(--blue);
-  color: var(--light);
-  line-height: 2.5;
+  border: 0;
   cursor: pointer;
-  transition: opacity .2s;
+  transition:
+    transform 0.18s ease,
+    opacity 0.18s ease,
+    background-color 0.18s ease,
+    border-color 0.18s ease;
 }
 
 button:disabled {
-  filter: grayscale(1);
   cursor: not-allowed;
+  opacity: 0.5;
 }
 
 button:not(:disabled):active {
-  opacity: 0.6;
+  transform: translateY(1px);
 }
 
-textarea {
-  display: block;
-  margin: 0;
+code {
+  padding: 0.15em 0.4em;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.8);
 }
 
-@media (prefers-color-scheme: light) {
-  body {
-    background-color: #f4f4f4;
-  }
-
-  ::-webkit-scrollbar-track-piece {
-    background-color: #f4f4f4;
-  }
-
-  ::-webkit-scrollbar-thumb {
-    border-color: #f4f4f4;
-  }
+.primary-button,
+.secondary-button,
+.ghost-button {
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 14px;
 }
 
-@media (prefers-color-scheme: dark) {
-  &::-webkit-scrollbar-track-piece {
-    background-color: #303133;
-  }
+.primary-button {
+  background: linear-gradient(135deg, #38bdf8, #2563eb);
+  color: #eff6ff;
+}
 
-  &::-webkit-scrollbar-thumb {
-    background-color: #666;
-    border-color: #303133;
-  }
+.secondary-button {
+  background: rgba(59, 130, 246, 0.18);
+  color: #bfdbfe;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+}
 
-  body {
-    background-color: #303133;
-    color: #fff;
-  }
+.ghost-button {
+  background: rgba(15, 23, 42, 0.72);
+  color: rgba(226, 232, 240, 0.86);
+  border: 1px solid rgba(148, 163, 184, 0.22);
+}
+
+.ghost-button--danger {
+  color: #fca5a5;
+  border-color: rgba(248, 113, 113, 0.24);
 }

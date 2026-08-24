@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>DeepSeek</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        background: #0f172a;
+      }
+
+      html,
+      body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #0f172a;
+      }
+
+      .shell {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      #deepseek-webview {
+        width: 100%;
+        height: 100%;
+        border: 0;
+      }
+
+      .shell-status {
+        position: absolute;
+        left: 50%;
+        bottom: 24px;
+        transform: translateX(-50%);
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.76);
+        color: #e2e8f0;
+        font-size: 13px;
+        backdrop-filter: blur(10px);
+        pointer-events: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="shell">
+      <webview id="deepseek-webview"></webview>
+      <div
+        id="deepseek-status"
+        class="shell-status"
+      >
+        正在准备 DeepSeek 窗口...
+      </div>
+    </main>
+  </body>
+</html>
