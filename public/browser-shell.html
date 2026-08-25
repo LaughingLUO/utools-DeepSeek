@@ -125,6 +125,610 @@
         font-weight: 700;
         letter-spacing: 0.04em;
       }
+
+      .shell-fab {
+        position: absolute;
+        top: 88px;
+        left: 24px;
+        z-index: 3;
+        width: 52px;
+        height: 52px;
+        user-select: none;
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease;
+      }
+
+      .shell-fab__handle {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 52px;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        padding: 0;
+        border: 1px solid rgba(38, 43, 57, 0.92);
+        border-radius: 50%;
+        border-right: 0;
+        background: #161922;
+        box-shadow:
+          0 20px 56px rgba(0, 0, 0, 0.55),
+          0 6px 16px rgba(0, 0, 0, 0.4);
+        cursor: grab;
+        transition:
+          transform 160ms ease,
+          box-shadow 160ms ease,
+          background-color 160ms ease,
+          border-color 160ms ease,
+          opacity 180ms ease;
+      }
+
+      .shell-fab[data-edge='right'] .shell-fab__handle {
+        left: auto;
+        right: 0;
+        border-radius: 50%;
+        border-right: 1px solid rgba(38, 43, 57, 0.92);
+        border-left: 0;
+      }
+
+      .shell-fab[data-edge='top'] .shell-fab__handle,
+      .shell-fab[data-edge='bottom'] .shell-fab__handle {
+        border-radius: 50%;
+        border-right: 1px solid rgba(38, 43, 57, 0.92);
+      }
+
+      .shell-fab.is-dragging .shell-fab__handle {
+        cursor: grabbing;
+        transform: scale(1.04);
+        box-shadow: 0 24px 60px rgba(0, 0, 0, 0.58);
+        border-color: rgba(77, 107, 254, 0.5);
+      }
+
+      .shell-fab:not(:hover):not(:focus-within):not(.is-open):not(.is-dragging) {
+        opacity: 0.5;
+      }
+
+      .shell-fab[data-edge='left']:not(:hover):not(:focus-within):not(.is-open):not(.is-dragging) {
+        transform: translateX(-26px);
+      }
+
+      .shell-fab[data-edge='right']:not(:hover):not(:focus-within):not(.is-open):not(.is-dragging) {
+        transform: translateX(26px);
+      }
+
+      .shell-fab[data-edge='top']:not(:hover):not(:focus-within):not(.is-open):not(.is-dragging) {
+        transform: translateY(-20px);
+      }
+
+      .shell-fab[data-edge='bottom']:not(:hover):not(:focus-within):not(.is-open):not(.is-dragging) {
+        transform: translateY(20px);
+      }
+
+      .shell-fab__icon {
+        position: relative;
+        width: 20px;
+        height: 20px;
+        pointer-events: none;
+        flex: 0 0 auto;
+      }
+
+      .shell-fab__icon::before,
+      .shell-fab__icon::after,
+      .shell-fab__icon span {
+        content: '';
+        position: absolute;
+        left: 50%;
+        width: 12px;
+        height: 2px;
+        border-radius: 999px;
+        background: #e8eaf0;
+        transform: translateX(-50%);
+      }
+
+      .shell-fab__icon::before {
+        top: 4px;
+      }
+
+      .shell-fab__icon span {
+        top: 9px;
+      }
+
+      .shell-fab__icon::after {
+        top: 14px;
+      }
+
+      .shell-fab__icon-dot {
+        position: absolute;
+        right: 0;
+        width: 3px;
+        height: 3px;
+        border-radius: 50%;
+        background: #6b8aff;
+        box-shadow:
+          0 -5px 0 #6b8aff,
+          0 5px 0 #6b8aff;
+        top: 50%;
+        transform: translateY(-50%);
+      }
+
+      .shell-fab__menu {
+        position: absolute;
+        min-width: 340px;
+        max-width: min(340px, calc(100vw - 96px));
+        padding: 0;
+        border-radius: 18px;
+        border: 1px solid #262b39;
+        background: #161922;
+        box-shadow:
+          0 20px 56px rgba(0, 0, 0, 0.55),
+          0 6px 16px rgba(0, 0, 0, 0.4);
+        opacity: 0;
+        visibility: hidden;
+        transform: translateY(6px) scale(0.98);
+        transition:
+          opacity 160ms ease,
+          visibility 160ms ease,
+          transform 160ms ease;
+      }
+
+      .shell-fab[data-menu-side='right'] .shell-fab__menu {
+        left: calc(100% + 14px);
+      }
+
+      .shell-fab[data-menu-side='left'] .shell-fab__menu {
+        right: calc(100% + 14px);
+      }
+
+      .shell-fab[data-menu-align='top'] .shell-fab__menu {
+        top: 0;
+      }
+
+      .shell-fab[data-menu-align='bottom'] .shell-fab__menu {
+        bottom: 0;
+      }
+
+      .shell-fab[data-menu-align='center'] .shell-fab__menu {
+        top: 50%;
+        transform: translateY(-50%) scale(0.98);
+      }
+
+      .shell-fab:hover .shell-fab__menu,
+      .shell-fab:focus-within .shell-fab__menu,
+      .shell-fab.is-open .shell-fab__menu {
+        opacity: 1;
+        visibility: visible;
+        transform: translateY(0) scale(1);
+      }
+
+      .shell-fab:hover[data-menu-align='center'] .shell-fab__menu,
+      .shell-fab:focus-within[data-menu-align='center'] .shell-fab__menu,
+      .shell-fab.is-open[data-menu-align='center'] .shell-fab__menu {
+        transform: translateY(-50%) scale(1);
+      }
+
+      .shell-fab__actions {
+        display: grid;
+        gap: 0;
+      }
+
+      .shell-fab__section {
+        display: grid;
+        gap: 8px;
+        padding: 16px;
+      }
+
+      .shell-fab__section + .shell-fab__section {
+        border-top: 1px solid #262b39;
+      }
+
+      .shell-fab__button,
+      .shell-fab__select {
+        width: 100%;
+        min-height: 56px;
+        border-radius: 10px;
+        border: 1px solid transparent;
+        background: transparent;
+        color: #e8eaf0;
+        font: inherit;
+      }
+
+      .shell-fab__button {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 0 12px;
+        text-align: left;
+        cursor: pointer;
+        transition:
+          transform 140ms ease,
+          background-color 140ms ease,
+          border-color 140ms ease,
+          box-shadow 140ms ease;
+      }
+
+      .shell-fab__button:disabled {
+        cursor: not-allowed;
+        opacity: 0.54;
+      }
+
+      .shell-fab__button--hidden {
+        display: none;
+      }
+
+      .shell-fab__button:hover:not(:disabled) {
+        transform: translateY(0);
+        background: #232838;
+      }
+
+      .shell-fab__button-icon {
+        width: 32px;
+        height: 32px;
+        display: grid;
+        place-items: center;
+        border-radius: 10px;
+        background: #2a3045;
+        color: #b3b8c5;
+        text-align: center;
+        flex: 0 0 32px;
+        font-size: 13px;
+        line-height: 1;
+      }
+
+      .shell-fab__button-text {
+        flex: 1 1 auto;
+        font-weight: 600;
+        font-size: 13px;
+      }
+
+      .shell-fab__button-kbd {
+        color: #808797;
+        font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+        font-size: 10.5px;
+        padding: 2px 6px;
+        border-radius: 5px;
+        background: #2a3045;
+        border: 1px solid #313747;
+      }
+
+      .shell-fab__field {
+        display: grid;
+        gap: 8px;
+      }
+
+      .shell-fab__account-card {
+        position: relative;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+        border-radius: 10px;
+        background: #1d2230;
+        border: 1px solid #262b39;
+        cursor: pointer;
+        transition: background-color 120ms ease, border-color 120ms ease;
+      }
+
+      .shell-fab__account-card:hover {
+        background: #232838;
+        border-color: #313747;
+      }
+
+      .shell-fab__account-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        flex: 0 0 32px;
+        display: grid;
+        place-items: center;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+        background: linear-gradient(135deg, #5b8cff, #3a55e0);
+      }
+
+      .shell-fab__account-main {
+        flex: 1 1 auto;
+        min-width: 0;
+      }
+
+      .shell-fab__account-name {
+        color: #e8eaf0;
+        font-size: 13px;
+        font-weight: 600;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .shell-fab__account-id {
+        margin-top: 1px;
+        color: #808797;
+        font-size: 11px;
+        font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+      }
+
+      .shell-fab__account-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        margin-left: 6px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        background: rgba(77, 107, 254, 0.12);
+        color: #4d6bfe;
+        font-size: 10.5px;
+        font-weight: 600;
+        font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+        vertical-align: middle;
+      }
+
+      .shell-fab__account-chevron {
+        color: #808797;
+        transition: transform 180ms ease;
+      }
+
+      .shell-fab__account-chevron svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .shell-fab__account-card.is-open .shell-fab__account-chevron {
+        transform: rotate(180deg);
+      }
+
+      .shell-fab__account-dropdown {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        right: 0;
+        z-index: 5;
+        display: none;
+        padding: 4px;
+        border-radius: 12px;
+        border: 1px solid #262b39;
+        background: #161922;
+        box-shadow:
+          0 20px 56px rgba(0, 0, 0, 0.55),
+          0 6px 16px rgba(0, 0, 0, 0.4);
+      }
+
+      .shell-fab__account-card.is-open .shell-fab__account-dropdown {
+        display: block;
+      }
+
+      .shell-fab__account-option {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: #e8eaf0;
+        text-align: left;
+        cursor: pointer;
+      }
+
+      .shell-fab__account-option:hover {
+        background: #232838;
+      }
+
+      .shell-fab__account-option.is-selected {
+        background: rgba(77, 107, 254, 0.16);
+      }
+
+      .shell-fab__account-option-mark {
+        color: #4d6bfe;
+        visibility: hidden;
+      }
+
+      .shell-fab__account-option.is-selected .shell-fab__account-option-mark {
+        visibility: visible;
+      }
+
+      .shell-fab__account-option-mark svg {
+        width: 14px;
+        height: 14px;
+      }
+
+      .shell-fab__label {
+        margin: 0;
+        color: #808797;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0;
+        padding: 0 2px 6px;
+      }
+
+      .shell-fab__select {
+        background: #1d2230;
+        border-color: #262b39;
+        padding: 0 12px;
+        color: #e8eaf0;
+      }
+
+      .shell-fab__head {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        padding: 18px 18px 10px;
+      }
+
+      .shell-fab__title {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #e8eaf0;
+        font-size: 13px;
+        font-weight: 600;
+      }
+
+      .shell-fab__title-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: #4d6bfe;
+        box-shadow: 0 0 0 3px rgba(77, 107, 254, 0.18);
+      }
+
+      .shell-fab[data-edge='top'][data-menu-align='bottom'] .shell-fab__menu,
+      .shell-fab[data-edge='bottom'][data-menu-align='top'] .shell-fab__menu,
+      .shell-fab[data-edge='left'][data-menu-align='top'] .shell-fab__menu,
+      .shell-fab[data-edge='right'][data-menu-align='top'] .shell-fab__menu {
+        transform-origin: top center;
+      }
+
+      .shell-fab[data-edge='top'][data-menu-align='top'] .shell-fab__menu,
+      .shell-fab[data-edge='bottom'][data-menu-align='bottom'] .shell-fab__menu,
+      .shell-fab[data-edge='left'][data-menu-align='bottom'] .shell-fab__menu,
+      .shell-fab[data-edge='right'][data-menu-align='bottom'] .shell-fab__menu,
+      .shell-fab[data-menu-align='center'] .shell-fab__menu {
+        transform-origin: center center;
+      }
+
+      :root[data-theme='light'] .shell-fab__handle {
+        background: #ffffff;
+        color: #1a1d24;
+        border-color: #e6e8ee;
+        box-shadow:
+          0 16px 48px rgba(15, 18, 28, 0.1),
+          0 4px 12px rgba(15, 18, 28, 0.06);
+      }
+
+      :root[data-theme='light'] .shell-fab.is-dragging .shell-fab__handle {
+        box-shadow: 0 20px 36px rgba(148, 163, 184, 0.28);
+        border-color: rgba(37, 99, 235, 0.4);
+      }
+
+      :root[data-theme='light'] .shell-fab__icon::before,
+      :root[data-theme='light'] .shell-fab__icon::after,
+      :root[data-theme='light'] .shell-fab__icon span {
+        background: #1a1d24;
+      }
+
+      :root[data-theme='light'] .shell-fab__menu {
+        border-color: #e6e8ee;
+        background: #ffffff;
+        box-shadow:
+          0 16px 48px rgba(15, 18, 28, 0.1),
+          0 4px 12px rgba(15, 18, 28, 0.06);
+      }
+
+      :root[data-theme='light'] .shell-fab__button,
+      :root[data-theme='light'] .shell-fab__select {
+        color: #1a1d24;
+      }
+
+      :root[data-theme='light'] .shell-fab__button:hover:not(:disabled) {
+        background: #f3f4f7;
+      }
+
+      :root[data-theme='light'] .shell-fab__button-icon {
+        background: #eceef4;
+        color: #4a5060;
+      }
+
+      :root[data-theme='light'] .shell-fab__label {
+        color: #7a8294;
+      }
+
+      :root[data-theme='light'] .shell-fab__account-card {
+        background: #ffffff;
+        border-color: #e6e8ee;
+      }
+
+      :root[data-theme='light'] .shell-fab__account-card:hover {
+        background: #f3f4f7;
+        border-color: #d6dae2;
+      }
+
+      :root[data-theme='light'] .shell-fab__account-name {
+        color: #1a1d24;
+      }
+
+      :root[data-theme='light'] .shell-fab__account-id,
+      :root[data-theme='light'] .shell-fab__account-chevron {
+        color: #7a8294;
+      }
+
+      :root[data-theme='light'] .shell-fab__account-dropdown {
+        border-color: #e6e8ee;
+        background: #ffffff;
+        box-shadow:
+          0 16px 48px rgba(15, 18, 28, 0.1),
+          0 4px 12px rgba(15, 18, 28, 0.06);
+      }
+
+      :root[data-theme='light'] .shell-fab__account-option {
+        color: #1a1d24;
+      }
+
+      :root[data-theme='light'] .shell-fab__account-option:hover {
+        background: #f3f4f7;
+      }
+
+      :root[data-theme='light'] .shell-fab__account-option.is-selected {
+        background: #eef2ff;
+      }
+
+      :root[data-theme='light'] .shell-fab__button-kbd {
+        color: #7a8294;
+        background: #eceef4;
+        border-color: #e6e8ee;
+      }
+
+      :root[data-theme='light'] .shell-fab__button--primary .shell-fab__button-icon {
+        color: #2563eb;
+        background: #4d6bfe;
+        color: #ffffff;
+        box-shadow: 0 2px 6px rgba(77, 107, 254, 0.35);
+      }
+
+      :root[data-theme='light'] .shell-fab__button--primary:hover .shell-fab__button-icon {
+        background: #3a55e0;
+      }
+
+      :root[data-theme='light'] .shell-fab__button--secondary:hover .shell-fab__button-icon {
+        background: #eef2ff;
+        color: #4d6bfe;
+      }
+
+      :root[data-theme='light'] .shell-fab__select {
+        background: #ffffff;
+        border-color: #e6e8ee;
+      }
+
+      :root[data-theme='light'] .shell-fab__head {
+        background: #ffffff;
+      }
+
+      :root[data-theme='light'] .shell-fab__section + .shell-fab__section {
+        border-color: #e6e8ee;
+      }
+
+      :root[data-theme='light'] .shell-fab__title,
+      :root[data-theme='light'] .shell-fab__button-text {
+        color: #1a1d24;
+      }
+
+      .shell-drag-shield {
+        position: fixed;
+        inset: 0;
+        z-index: 4;
+        cursor: grabbing;
+        background: transparent;
+        display: none;
+      }
+
+      .shell-drag-shield.is-active {
+        display: block;
+      }
     </style>
   </head>
   <body>
@@ -152,6 +756,97 @@
       >
         正在准备 DeepSeek 窗口...
       </div>
+      <div
+        id="deepseek-fab"
+        class="shell-fab"
+        data-edge="left"
+      >
+        <div
+          id="deepseek-fab-menu"
+          class="shell-fab__menu"
+        >
+          <div class="shell-fab__head">
+            <div class="shell-fab__title">
+              <span class="shell-fab__title-dot"></span>
+              <span>工具菜单</span>
+            </div>
+          </div>
+          <div class="shell-fab__actions">
+            <div class="shell-fab__section">
+              <div class="shell-fab__field">
+                <span class="shell-fab__label">当前账号</span>
+                <div
+                  id="deepseek-fab-account-card"
+                  class="shell-fab__account-card"
+                  tabindex="0"
+                  role="button"
+                  aria-haspopup="listbox"
+                  aria-expanded="false"
+                >
+                  <div
+                    id="deepseek-fab-account-avatar"
+                    class="shell-fab__account-avatar"
+                  >A</div>
+                  <div class="shell-fab__account-main">
+                    <div
+                      id="deepseek-fab-account-name"
+                      class="shell-fab__account-name"
+                    ></div>
+                    <div
+                      id="deepseek-fab-account-id"
+                      class="shell-fab__account-id"
+                    ></div>
+                  </div>
+                  <span class="shell-fab__account-chevron">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                  <div
+                    id="deepseek-fab-account-dropdown"
+                    class="shell-fab__account-dropdown"
+                    role="listbox"
+                  ></div>
+                </div>
+              </div>
+            </div>
+            <div class="shell-fab__section">
+              <span class="shell-fab__label">快捷操作</span>
+              <button
+                id="deepseek-fab-return"
+                class="shell-fab__button shell-fab__button--primary shell-fab__button--hidden"
+                type="button"
+              >
+                <span class="shell-fab__button-icon">⌂</span>
+                <span class="shell-fab__button-text">返回 DeepSeek</span>
+              </button>
+              <button
+                id="deepseek-fab-copy-link"
+                class="shell-fab__button shell-fab__button--secondary"
+                type="button"
+              >
+                <span class="shell-fab__button-icon">⎘</span>
+                <span class="shell-fab__button-text">复制链接</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        <button
+          id="deepseek-fab-handle"
+          class="shell-fab__handle"
+          type="button"
+          aria-label="功能菜单"
+        >
+          <span class="shell-fab__icon">
+            <span></span>
+            <span class="shell-fab__icon-dot"></span>
+          </span>
+        </button>
+      </div>
+      <div
+        id="deepseek-drag-shield"
+        class="shell-drag-shield"
+      ></div>
     </main>
   </body>
 </html>

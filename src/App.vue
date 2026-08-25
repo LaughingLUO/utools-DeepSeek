@@ -6,6 +6,7 @@ import DeepSeekWorkspace from './DeepSeek/index.vue'
 const LAST_ROUTE_KEY = 'deepseek:last-route'
 const route = shallowRef(readLastRoute())
 const enterAction = shallowRef({})
+const launchInstanceKey = shallowRef(0)
 const theme = shallowRef(resolveTheme())
 let mediaQueryList = null
 let handleThemeChange = null
@@ -62,6 +63,9 @@ function registerPluginLifecycle() {
   if (!pluginEnterRegistered) {
     window.utools.onPluginEnter((action) => {
       enterAction.value = action
+      if (action.code === 'DeepSeek') {
+        launchInstanceKey.value += 1
+      }
       updateRoute(action.code)
     })
     pluginEnterRegistered = true
@@ -101,6 +105,7 @@ onBeforeUnmount(() => {
   >
     <template v-if="route === 'DeepSeek'">
       <DeepSeekLaunch
+        :key="`deepseek-launch-${launchInstanceKey}`"
         :enter-action="enterAction"
         @need-settings="handleLaunchFallback"
       />
