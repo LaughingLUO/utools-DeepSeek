@@ -11,6 +11,8 @@ bootstrap()
 
 async function bootstrap() {
   window.addEventListener('DOMContentLoaded', async () => {
+    initializeTheme()
+
     const webview = document.getElementById('deepseek-webview')
     const status = document.getElementById('deepseek-status')
     const mask = document.getElementById('deepseek-mask')
@@ -109,6 +111,30 @@ async function bootstrap() {
   })
 }
 
+function initializeTheme() {
+  const applyTheme = (theme) => {
+    document.documentElement.dataset.theme = theme
+    document.body.dataset.theme = theme
+  }
+
+  const mediaQueryList = window.matchMedia?.('(prefers-color-scheme: dark)') || null
+
+  if (mediaQueryList) {
+    applyTheme(mediaQueryList.matches ? 'dark' : 'light')
+    mediaQueryList.addEventListener?.('change', (event) => {
+      applyTheme(event.matches ? 'dark' : 'light')
+    })
+    return
+  }
+
+  if (typeof window.utools?.isDarkColors === 'function') {
+    applyTheme(window.utools.isDarkColors() ? 'dark' : 'light')
+    return
+  }
+
+  applyTheme('dark')
+}
+
 function parseRuntimeArgs(argv) {
   return argv.reduce((result, arg) => {
     if (!arg.startsWith('--')) return result
@@ -188,14 +214,22 @@ function buildSessionSyncScript(rawUserToken) {
     (() => {
       const rawUserToken = ${JSON.stringify(rawUserToken)};
       const current = localStorage.getItem('userToken') || '';
+      const envWarnKey = 'closeUnsafeEnvWarn';
+      const envWarnValue = JSON.stringify({ value: true, __version: '0' });
+      const currentEnvWarnValue = localStorage.getItem(envWarnKey) || '';
       const markerKey = '__utools_deepseek_token_synced';
       const synced = sessionStorage.getItem(markerKey) === '1';
       const targetUrl = ${JSON.stringify(DEEPSEEK_CHAT_URL)};
       const inSignIn = location.pathname.includes('/sign_in');
-      const alreadyReady = current === rawUserToken && !inSignIn;
+      const envWarnReady = currentEnvWarnValue === envWarnValue;
+      const alreadyReady = current === rawUserToken && envWarnReady && !inSignIn;
 
       if (current !== rawUserToken) {
         localStorage.setItem('userToken', rawUserToken);
+      }
+
+      if (!envWarnReady) {
+        localStorage.setItem(envWarnKey, envWarnValue);
       }
 
       if (alreadyReady) {
@@ -224,8 +258,8 @@ function buildSessionSyncScript(rawUserToken) {
       }
 
       return {
-        ready: current === rawUserToken && !inSignIn,
-        changed: current !== rawUserToken,
+        ready: current === rawUserToken && envWarnReady && !inSignIn,
+        changed: current !== rawUserToken || !envWarnReady,
         redirected: false,
         reloaded: false,
         href: location.href,
@@ -243,6 +277,8 @@ async function syncChatSession(webview, rawUserToken) {
 function revealChatSurface(webview, mask) {
   webview?.classList.remove('is-hidden')
   mask?.classList.add('is-hidden')
+  const status = document.getElementById('deepseek-status')
+  status?.classList.add('is-hidden')
 }
 
 function updateStatusFromSyncResult(status, result) {

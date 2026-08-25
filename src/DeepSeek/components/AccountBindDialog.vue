@@ -56,17 +56,16 @@ const dialogTitle = computed(() => {
   >
     <section class="dialog-panel">
       <div class="dialog-panel__header">
-        <div>
-          <p class="dialog-panel__eyebrow">账号绑定</p>
-          <h3 class="dialog-panel__title">{{ dialogTitle }}</h3>
-        </div>
+        <h3 class="dialog-panel__title">{{ dialogTitle }}</h3>
 
         <button
-          class="ghost-button"
+          class="dialog-panel__close"
+          aria-label="关闭"
           :disabled="isCapturing"
           @click="emit('close')"
         >
-          关闭
+          <span></span>
+          <span></span>
         </button>
       </div>
 
@@ -103,14 +102,6 @@ const dialogTitle = computed(() => {
         <p class="dialog-panel__status-text">
           {{ statusText || '先输入账户名称，再点击“跳转登录”，扫码完成后回到这里保存。' }}
         </p>
-
-        <div
-          v-if="sessionData?.userToken"
-          class="dialog-panel__token-card"
-        >
-          <p class="dialog-panel__token-label">已捕获 userToken</p>
-          <p class="dialog-panel__token-value">{{ sessionData.userToken }}</p>
-        </div>
       </div>
     </section>
   </div>
@@ -124,7 +115,7 @@ const dialogTitle = computed(() => {
   display: grid;
   place-items: center;
   padding: 20px;
-  background: rgba(2, 6, 23, 0.68);
+  background: var(--dialog-mask);
   backdrop-filter: blur(8px);
 }
 
@@ -134,38 +125,57 @@ const dialogTitle = computed(() => {
   gap: 18px;
   padding: 24px;
   border-radius: 26px;
-  border: 1px solid rgba(96, 165, 250, 0.18);
+  border: 1px solid var(--panel-border);
   background:
     radial-gradient(circle at top right, rgba(59, 130, 246, 0.12), transparent 28%),
-    #0f172a;
-  box-shadow: 0 24px 56px rgba(2, 6, 23, 0.4);
+    var(--panel-bg);
+  box-shadow: var(--panel-shadow);
 }
 
 .dialog-panel__header {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  align-items: flex-start;
-}
-
-.dialog-panel__eyebrow {
-  margin: 0 0 8px;
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #7dd3fc;
+  align-items: center;
 }
 
 .dialog-panel__title,
 .dialog-panel__label,
-.dialog-panel__status-text,
-.dialog-panel__token-label,
-.dialog-panel__token-value {
+.dialog-panel__status-text {
   margin: 0;
 }
 
 .dialog-panel__title {
   font-size: 28px;
+}
+
+.dialog-panel__close {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 auto;
+  border-radius: 14px;
+  background: var(--ghost-bg);
+  border: 1px solid var(--ghost-border);
+}
+
+.dialog-panel__close span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+  transform-origin: center;
+}
+
+.dialog-panel__close span:first-child {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.dialog-panel__close span:last-child {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 .dialog-panel__field {
@@ -174,15 +184,15 @@ const dialogTitle = computed(() => {
 }
 
 .dialog-panel__label {
-  color: rgba(226, 232, 240, 0.82);
+  color: var(--label-text);
 }
 
 .dialog-panel__input {
   height: 48px;
   padding: 0 14px;
   border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.26);
-  background: rgba(15, 23, 42, 0.88);
+  border: 1px solid var(--input-border);
+  background: var(--input-bg);
   color: inherit;
   outline: none;
 }
@@ -198,30 +208,13 @@ const dialogTitle = computed(() => {
   gap: 12px;
   padding: 16px;
   border-radius: 18px;
-  background: rgba(15, 23, 42, 0.8);
-  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: var(--table-bg);
+  border: 1px solid var(--table-row-border);
 }
 
 .dialog-panel__status-text {
-  color: rgba(226, 232, 240, 0.74);
+  color: var(--muted-text);
   line-height: 1.7;
-}
-
-.dialog-panel__token-card {
-  display: grid;
-  gap: 6px;
-}
-
-.dialog-panel__token-label {
-  color: #7dd3fc;
-  font-size: 12px;
-}
-
-.dialog-panel__token-value {
-  font-size: 12px;
-  line-height: 1.7;
-  color: #fca5a5;
-  word-break: break-all;
 }
 
 @media (max-width: 760px) {
@@ -230,7 +223,7 @@ const dialogTitle = computed(() => {
   }
 
   .dialog-panel__header {
-    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

@@ -9,9 +9,38 @@
     <title>DeepSeek</title>
     <style>
       :root {
-        color-scheme: dark;
         font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+        --shell-bg:
+          radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 32%),
+          linear-gradient(180deg, #091120 0%, #0f172a 100%);
+        --shell-status-bg: rgba(15, 23, 42, 0.76);
+        --shell-status-text: #e2e8f0;
+        --shell-mask-bg:
+          radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 32%),
+          linear-gradient(180deg, #091120 0%, #0f172a 100%);
+        --shell-title-color: #e2e8f0;
+        --shell-logo-shadow: drop-shadow(0 10px 20px rgba(37, 99, 235, 0.2));
         background: #0f172a;
+        color-scheme: dark;
+      }
+
+      :root[data-theme='light'] {
+        --shell-bg:
+          radial-gradient(circle at top, rgba(14, 165, 233, 0.12), transparent 34%),
+          linear-gradient(180deg, #f8fbff 0%, #eef5ff 46%, #e8f0fb 100%);
+        --shell-status-bg: rgba(255, 255, 255, 0.82);
+        --shell-status-text: #0f172a;
+        --shell-mask-bg:
+          radial-gradient(circle at top, rgba(14, 165, 233, 0.12), transparent 34%),
+          linear-gradient(180deg, #f8fbff 0%, #eef5ff 46%, #e8f0fb 100%);
+        --shell-title-color: #0f172a;
+        --shell-logo-shadow: drop-shadow(0 10px 20px rgba(14, 165, 233, 0.18));
+        background: #eef5ff;
+        color-scheme: light;
+      }
+
+      :root[data-theme='dark'] {
+        color-scheme: dark;
       }
 
       html,
@@ -20,7 +49,7 @@
         width: 100%;
         height: 100%;
         overflow: hidden;
-        background: #0f172a;
+        background: var(--shell-bg);
       }
 
       .shell {
@@ -48,12 +77,18 @@
         transform: translateX(-50%);
         padding: 10px 14px;
         border-radius: 999px;
-        background: rgba(15, 23, 42, 0.76);
-        color: #e2e8f0;
+        background: var(--shell-status-bg);
+        color: var(--shell-status-text);
         font-size: 13px;
         backdrop-filter: blur(10px);
         pointer-events: none;
         z-index: 2;
+        transition: opacity 160ms ease, visibility 160ms ease;
+      }
+
+      .shell-status.is-hidden {
+        opacity: 0;
+        visibility: hidden;
       }
 
       .shell-mask {
@@ -61,9 +96,7 @@
         inset: 0;
         display: grid;
         place-items: center;
-        background:
-          radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 32%),
-          linear-gradient(180deg, #091120 0%, #0f172a 100%);
+        background: var(--shell-mask-bg);
         z-index: 1;
         transition: opacity 180ms ease, visibility 180ms ease;
       }
@@ -83,11 +116,11 @@
         width: 72px;
         height: 72px;
         object-fit: contain;
-        filter: drop-shadow(0 10px 20px rgba(37, 99, 235, 0.2));
+        filter: var(--shell-logo-shadow);
       }
 
       .shell-mask__title {
-        color: #e2e8f0;
+        color: var(--shell-title-color);
         font-size: 24px;
         font-weight: 700;
         letter-spacing: 0.04em;

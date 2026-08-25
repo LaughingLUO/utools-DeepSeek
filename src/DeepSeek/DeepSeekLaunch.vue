@@ -47,8 +47,8 @@ onMounted(() => {
   margin: 0;
   padding: 14px 18px;
   border-radius: 16px;
-  color: rgba(226, 232, 240, 0.82);
-  background: rgba(15, 23, 42, 0.78);
-  border: 1px solid rgba(148, 163, 184, 0.18);
+  color: var(--launch-card-text);
+  background: var(--launch-card-bg);
+  border: 1px solid var(--launch-card-border);
 }
 </style>

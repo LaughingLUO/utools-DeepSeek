@@ -31,10 +31,7 @@ const {
   <main class="settings-page">
     <section class="settings-panel">
       <div class="settings-panel__header">
-        <div>
-          <p class="settings-panel__eyebrow">用户列表</p>
-          <h2 class="settings-panel__title">已保存账号</h2>
-        </div>
+        <h2 class="settings-panel__title">用户列表</h2>
 
         <button
           class="primary-button"
@@ -81,14 +78,6 @@ const {
   gap: 12px;
 }
 
-.settings-panel__eyebrow {
-  margin: 0;
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: #7dd3fc;
-}
-
 .settings-panel__title {
   margin: 0;
 }
@@ -96,9 +85,10 @@ const {
 .settings-panel {
   padding: 24px;
   border-radius: 26px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: rgba(15, 23, 42, 0.7);
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
   backdrop-filter: blur(14px);
+  box-shadow: var(--panel-shadow);
 }
 
 .settings-panel__header {

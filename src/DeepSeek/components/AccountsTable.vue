@@ -74,28 +74,28 @@ const emit = defineEmits([
 .accounts-table {
   overflow: auto;
   border-radius: 18px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid var(--panel-border);
 }
 
 .accounts-table__table {
   width: 100%;
   border-collapse: collapse;
   min-width: 640px;
-  background: rgba(15, 23, 42, 0.76);
+  background: var(--table-bg);
 }
 
 .accounts-table__table th,
 .accounts-table__table td {
   padding: 16px 14px;
   text-align: left;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  border-bottom: 1px solid var(--table-row-border);
   vertical-align: top;
 }
 
 .accounts-table__table th {
   font-size: 13px;
-  color: rgba(191, 219, 254, 0.82);
-  background: rgba(30, 41, 59, 0.72);
+  color: var(--table-head-color);
+  background: var(--table-head-bg);
 }
 
 .accounts-table__actions {
@@ -107,7 +107,7 @@ const emit = defineEmits([
 .accounts-empty {
   padding: 28px;
   border-radius: 18px;
-  border: 1px dashed rgba(148, 163, 184, 0.26);
-  color: rgba(226, 232, 240, 0.68);
+  border: 1px dashed var(--empty-border);
+  color: var(--empty-color);
 }
 </style>
