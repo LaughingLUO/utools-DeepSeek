@@ -1,49 +1,84 @@
 import { computed, reactive, shallowRef } from 'vue'
 import {
-  buildPartition,
-  clearAccountSession,
-  clearBindingState,
   createAccountDraft,
   deleteAccount,
-  getAccountSession,
+  getAccountById,
   listAccountsState,
   setDefaultAccount,
   upsertAccount
 } from '../services/accountStore'
 import {
-  clearAccountBrowserProfile,
-  openBindingSession,
-  openChatWindow
+  cleanupBindingWindow,
+  hasBindingWindow,
+  navigateBindingWindowToChat,
+  openBindingWindow,
+  openChatWindow,
+  readBindingCookies,
+  readBindingSession
 } from '../services/browserWindows'
+
+function createDialogState() {
+  return {
+    open: false,
+    mode: 'create',
+    accountId: '',
+    name: '',
+    isCapturing: false,
+    capturedSession: null,
+    statusText: ''
+  }
+}
+
+function buildRawUserToken(userToken) {
+  if (!userToken) return ''
+  return JSON.stringify({
+    value: userToken,
+    __version: '0'
+  })
+}
+
+function ensureRawUserTokenPayload(rawValue, userToken) {
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim()
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (typeof parsed?.value === 'string' && parsed.value.trim()) {
+          return trimmed
+        }
+      } catch (error) {
+        // Ignore invalid json.
+      }
+    }
+  }
+
+  return buildRawUserToken(userToken)
+}
 
 export function useDeepSeekAccounts() {
   const accounts = shallowRef([])
   const defaultAccountId = shallowRef('')
-  const bindingAccountIds = shallowRef([])
-  const activeBindingName = shallowRef('')
-  const isSubmitting = shallowRef(false)
+  const dialogState = reactive(createDialogState())
 
-  const formState = reactive({
-    name: ''
-  })
+  let bindingWindowId = null
+  let bindingPollTimer = null
+  let bindingPolling = false
+  let bindingNavigateTriggered = false
 
   const hasAccounts = computed(() => accounts.value.length > 0)
-  const isBinding = computed(() => bindingAccountIds.value.length > 0 || isSubmitting.value)
-
   const defaultAccount = computed(() => {
     return accounts.value.find((item) => item.id === defaultAccountId.value) || null
+  })
+  const canStartCapture = computed(() => {
+    return dialogState.name.trim().length > 0 && !dialogState.isCapturing
+  })
+  const canSavePending = computed(() => {
+    return Boolean(dialogState.capturedSession?.userToken) && !dialogState.isCapturing
   })
 
   function refresh() {
     const state = listAccountsState()
-    accounts.value = state.accounts.map((account) => {
-      const session = getAccountSession(account.id)
-      return {
-        ...account,
-        userToken: session?.userToken || '',
-        rawUserToken: session?.rawUserToken ?? ''
-      }
-    })
+    accounts.value = state.accounts
     defaultAccountId.value = state.defaultAccountId
   }
 
@@ -51,39 +86,162 @@ export function useDeepSeekAccounts() {
     utools.showNotification(message)
   }
 
-  function getBindingName(name) {
-    return name?.trim() || ''
+  function stopBindingPolling() {
+    if (bindingPollTimer) {
+      window.clearInterval(bindingPollTimer)
+      bindingPollTimer = null
+    }
+    bindingPolling = false
+    bindingNavigateTriggered = false
   }
 
-  async function beginBinding(name) {
-    const bindingName = getBindingName(name)
-    if (!bindingName) {
-      notify('请先输入账号名称，再开始绑定')
+  async function releaseBindingWindow() {
+    const currentWindowId = bindingWindowId
+    bindingWindowId = null
+
+    if (!currentWindowId) return
+
+    await cleanupBindingWindow(currentWindowId).catch(() => {})
+  }
+
+  function resetDialog() {
+    stopBindingPolling()
+    Object.assign(dialogState, createDialogState())
+  }
+
+  function openCreateDialog() {
+    resetDialog()
+    dialogState.open = true
+  }
+
+  function openRebindDialog(account) {
+    resetDialog()
+    dialogState.open = true
+    dialogState.mode = 'rebind'
+    dialogState.accountId = account.id
+    dialogState.name = account.name
+    dialogState.statusText = `准备重新绑定 ${account.name}`
+  }
+
+  function closeDialog() {
+    if (dialogState.isCapturing) return
+    resetDialog()
+  }
+
+  function updateDialogName(name) {
+    dialogState.name = name
+  }
+
+  function startBindingPolling(accountName) {
+    stopBindingPolling()
+
+    bindingPollTimer = window.setInterval(async () => {
+      if (bindingPolling || !bindingWindowId) return
+      bindingPolling = true
+
+      try {
+        if (!hasBindingWindow(bindingWindowId)) {
+          stopBindingPolling()
+          dialogState.isCapturing = false
+          dialogState.statusText = '登录窗口已关闭，请重新点击“跳转登录”。'
+          bindingWindowId = null
+          notify('登录窗口已关闭，请重新发起登录')
+          return
+        }
+
+        const sessionData = await readBindingSession(bindingWindowId, accountName)
+        if (!sessionData?.userToken) {
+          const cookies = await readBindingCookies(bindingWindowId).catch(() => [])
+          const hasAuthCookies = cookies.some((cookie) => {
+            const lowerName = String(cookie?.name || '').toLowerCase()
+            return /(token|auth|session|jwt)/.test(lowerName)
+          })
+
+          if (
+            hasAuthCookies &&
+            !bindingNavigateTriggered &&
+            typeof sessionData?.currentUrl === 'string' &&
+            sessionData.currentUrl.includes('/sign_in')
+          ) {
+            bindingNavigateTriggered = true
+            dialogState.statusText = '检测到登录态已建立，正在从登录页跳转回聊天页并抓取 userToken。'
+            await navigateBindingWindowToChat(bindingWindowId).catch(() => {})
+          }
+
+          return
+        }
+
+        dialogState.capturedSession = sessionData
+        dialogState.isCapturing = false
+        dialogState.statusText = `已拿到 ${accountName} 的 userToken，请点击保存。`
+        stopBindingPolling()
+        await releaseBindingWindow()
+      } catch (error) {
+        stopBindingPolling()
+        dialogState.isCapturing = false
+        dialogState.statusText = '读取登录结果失败，请重新点击“跳转登录”。'
+        bindingWindowId = null
+        notify('读取登录结果失败，请重新发起登录')
+      } finally {
+        bindingPolling = false
+      }
+    }, 1200)
+  }
+
+  async function startBindingFlow() {
+    const accountName = dialogState.name.trim()
+    if (!accountName) {
+      notify('请先输入账户名称')
       return
     }
 
-    isSubmitting.value = true
-    activeBindingName.value = bindingName
+    dialogState.capturedSession = null
+    dialogState.isCapturing = true
+    dialogState.statusText = '正在打开 DeepSeek 登录窗口，请扫码登录。'
 
-    const draftAccount = createAccountDraft(bindingName)
-    bindingAccountIds.value = [draftAccount.id]
     try {
-      await openBindingSession(draftAccount)
-      upsertAccount({
-        ...draftAccount,
-        partition: buildPartition(draftAccount.id),
-        status: 'ready'
-      })
-      formState.name = ''
-      refresh()
-      notify('账号绑定成功')
+      await releaseBindingWindow()
+      const browserWindow = await openBindingWindow()
+      bindingWindowId = browserWindow.id
+      dialogState.statusText = '登录窗口已打开，请在新窗口扫码；拿到 userToken 后会自动回传这里。'
+      startBindingPolling(accountName)
     } catch (error) {
-      notify('登录窗口已关闭，或未能拿到 userToken')
-    } finally {
-      bindingAccountIds.value = []
-      activeBindingName.value = ''
-      isSubmitting.value = false
+      dialogState.isCapturing = false
+      dialogState.statusText = '登录窗口打开失败，请重试。'
+      notify('登录窗口打开失败，请重试')
     }
+  }
+
+  async function saveBinding() {
+    const accountName = dialogState.name.trim()
+    const sessionData = dialogState.capturedSession
+
+    if (!accountName) {
+      notify('请先输入账户名称')
+      return
+    }
+
+    if (!sessionData?.userToken) {
+      notify('请先点击“跳转登录”并完成扫码')
+      return
+    }
+
+    const existingAccount = dialogState.accountId
+      ? getAccountById(dialogState.accountId)
+      : null
+    const draftAccount = existingAccount || createAccountDraft(accountName)
+
+    upsertAccount({
+      ...draftAccount,
+      name: accountName,
+      status: 'ready',
+      userToken: sessionData.userToken,
+      rawUserToken: ensureRawUserTokenPayload(sessionData.rawUserToken, sessionData.userToken)
+    })
+
+    refresh()
+    resetDialog()
+    notify(existingAccount ? '账号重新绑定成功' : '账号绑定成功')
   }
 
   function launchAccount(account) {
@@ -92,11 +250,12 @@ export function useDeepSeekAccounts() {
     })
   }
 
-  async function launchDefaultAccount() {
+  function launchDefaultAccount() {
     if (!defaultAccount.value) {
-      notify('请先输入账号名称，再点击“绑定账号”')
+      notify('请先在设置里绑定一个账号')
       return
     }
+
     launchAccount(defaultAccount.value)
   }
 
@@ -105,42 +264,7 @@ export function useDeepSeekAccounts() {
     refresh()
   }
 
-  async function logoutAccount(account) {
-    await clearAccountBrowserProfile(account.id)
-    clearAccountSession(account.id)
-    clearBindingState(account.id)
-    upsertAccount({
-      ...account,
-      status: 'logged_out'
-    })
-    refresh()
-    notify(`${account.name} 已注销`)
-  }
-
-  async function rebindAccount(account) {
-    activeBindingName.value = account.name
-    bindingAccountIds.value = [account.id]
-    isSubmitting.value = true
-
-    try {
-      await openBindingSession(account)
-      upsertAccount({
-        ...account,
-        status: 'ready'
-      })
-      refresh()
-      notify('账号重新绑定成功')
-    } catch (error) {
-      notify('登录窗口已关闭，或未能拿到 userToken')
-    } finally {
-      bindingAccountIds.value = []
-      activeBindingName.value = ''
-      isSubmitting.value = false
-    }
-  }
-
   async function removeAccount(account) {
-    await clearAccountBrowserProfile(account.id)
     deleteAccount(account.id)
     refresh()
   }
@@ -151,18 +275,20 @@ export function useDeepSeekAccounts() {
     accounts,
     defaultAccountId,
     defaultAccount,
-    formState,
+    dialogState,
     hasAccounts,
-    isBinding,
-    isSubmitting,
-    activeBindingName,
-    beginBinding,
+    canSavePending,
+    canStartCapture,
+    openCreateDialog,
+    openRebindDialog,
+    closeDialog,
+    updateDialogName,
+    startBindingFlow,
+    saveBinding,
     launchAccount,
     launchDefaultAccount,
     makeDefault,
-    logoutAccount,
-    rebindAccount,
     removeAccount,
-    bindingAccountIds
+    refresh
   }
 }

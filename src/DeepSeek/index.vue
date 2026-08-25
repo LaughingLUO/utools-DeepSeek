@@ -1,7 +1,6 @@
 <script setup>
-import { computed, useTemplateRef } from 'vue'
-import AccountCard from './components/AccountCard.vue'
-import AccountForm from './components/AccountForm.vue'
+import AccountBindDialog from './components/AccountBindDialog.vue'
+import AccountsTable from './components/AccountsTable.vue'
 import { useDeepSeekAccounts } from './composables/useDeepSeekAccounts'
 
 defineProps({
@@ -13,211 +12,112 @@ defineProps({
 
 const {
   accounts,
-  bindingAccountIds,
-  defaultAccount,
   defaultAccountId,
-  formState,
+  dialogState,
   hasAccounts,
-  isBinding,
-  activeBindingName,
-  beginBinding,
-  launchAccount,
-  launchDefaultAccount,
-  logoutAccount,
+  canSavePending,
+  canStartCapture,
+  openCreateDialog,
+  closeDialog,
+  updateDialogName,
+  startBindingFlow,
+  saveBinding,
   makeDefault,
-  rebindAccount,
   removeAccount
 } = useDeepSeekAccounts()
-
-const bindingSet = computed(() => new Set(bindingAccountIds.value))
-const accountFormRef = useTemplateRef('accountFormRef')
-
-function handlePrimaryAction() {
-  if (defaultAccount.value) {
-    launchDefaultAccount()
-    return
-  }
-
-  accountFormRef.value?.focusInput?.()
-  utools.showNotification('先输入账号名称，再点击“绑定账号”')
-}
 </script>
 
 <template>
-  <main class="deepseek-page">
-    <section class="deepseek-page__hero">
-      <div class="deepseek-page__hero-copy">
-        <p class="deepseek-page__eyebrow">uTools x DeepSeek</p>
-        <h1 class="deepseek-page__title">
-          多账号托管版 DeepSeek 插件
-        </h1>
-        <p class="deepseek-page__desc">
-          现在可以单独管理多个账号，设置默认用户，并通过
-          <code>createBrowserWindow</code>
-          打开独立聊天窗口。
-        </p>
-      </div>
+  <main class="settings-page">
+    <section class="settings-panel">
+      <div class="settings-panel__header">
+        <div>
+          <p class="settings-panel__eyebrow">用户列表</p>
+          <h2 class="settings-panel__title">已保存账号</h2>
+        </div>
 
-      <div class="deepseek-page__hero-actions">
         <button
           class="primary-button"
-          @click="handlePrimaryAction"
+          @click="openCreateDialog"
         >
-          {{ defaultAccount ? `打开默认账号：${defaultAccount.name}` : '先绑定一个账号' }}
+          新增绑定账号
         </button>
       </div>
+
+      <AccountsTable
+        :accounts="accounts"
+        :default-account-id="defaultAccountId"
+        :has-accounts="hasAccounts"
+        @set-default="makeDefault"
+        @remove="removeAccount"
+      />
     </section>
 
-    <AccountForm
-      ref="accountFormRef"
-      v-model="formState.name"
-      :is-binding="isBinding"
-      :binding-name="activeBindingName"
-      @submit="beginBinding"
+    <AccountBindDialog
+      :open="dialogState.open"
+      :mode="dialogState.mode"
+      :name="dialogState.name"
+      :is-capturing="dialogState.isCapturing"
+      :status-text="dialogState.statusText"
+      :session-data="dialogState.capturedSession"
+      :can-start-capture="canStartCapture"
+      :can-save="canSavePending"
+      @update:name="updateDialogName"
+      @close="closeDialog"
+      @start-login="startBindingFlow"
+      @save="saveBinding"
     />
-
-    <section class="account-list">
-      <div class="account-list__header">
-        <h2 class="account-list__title">已绑定账号</h2>
-        <p class="account-list__meta">
-          {{ hasAccounts ? `共 ${accounts.length} 个账号` : '还没有账号，先绑定一个吧' }}
-        </p>
-      </div>
-
-      <div
-        v-if="hasAccounts"
-        class="account-list__grid"
-      >
-        <AccountCard
-          v-for="account in accounts"
-          :key="account.id"
-          :account="account"
-          :is-default="account.id === defaultAccountId"
-          :is-binding="bindingSet.has(account.id)"
-          @launch="launchAccount(account)"
-          @set-default="makeDefault(account.id)"
-          @rebind="rebindAccount(account)"
-          @logout="logoutAccount(account)"
-          @remove="removeAccount(account)"
-        />
-      </div>
-
-      <div
-        v-else
-        class="account-list__empty"
-      >
-        绑定完成后，这里会显示账号卡片、默认账号状态和账号切换入口。
-      </div>
-    </section>
   </main>
 </template>
 
 <style scoped>
-.deepseek-page {
+.settings-page {
   display: grid;
-  gap: 24px;
-  padding: 26px;
+  padding: 24px;
 }
 
-.deepseek-page__hero {
+.settings-panel {
   display: grid;
-  gap: 20px;
-  grid-template-columns: minmax(0, 1.2fr) minmax(280px, 0.8fr);
-  padding: 28px;
-  border-radius: 28px;
-  background:
-    radial-gradient(circle at top right, rgba(56, 189, 248, 0.24), transparent 34%),
-    linear-gradient(145deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.84));
-  border: 1px solid rgba(125, 211, 252, 0.18);
+  gap: 12px;
 }
 
-.deepseek-page__hero-copy {
-  display: grid;
-  gap: 10px;
-}
-
-.deepseek-page__eyebrow {
+.settings-panel__eyebrow {
   margin: 0;
   font-size: 12px;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
   color: #7dd3fc;
 }
 
-.deepseek-page__title {
+.settings-panel__title {
   margin: 0;
-  font-size: 40px;
-  line-height: 1.04;
 }
 
-.deepseek-page__desc {
-  margin: 0;
-  max-width: 680px;
-  color: rgba(226, 232, 240, 0.78);
-  line-height: 1.7;
+.settings-panel {
+  padding: 24px;
+  border-radius: 26px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(14px);
 }
 
-.deepseek-page__hero-actions {
-  display: flex;
-  align-items: end;
-  justify-content: end;
-}
-
-.account-list {
-  display: grid;
-  gap: 16px;
-}
-
-.account-list__header {
+.settings-panel__header {
   display: flex;
   justify-content: space-between;
   gap: 16px;
   align-items: center;
 }
 
-.account-list__title {
-  margin: 0;
-  font-size: 22px;
-}
-
-.account-list__meta {
-  margin: 0;
-  color: rgba(226, 232, 240, 0.66);
-}
-
-.account-list__grid {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-}
-
-.account-list__empty {
-  padding: 28px;
-  border-radius: 22px;
-  border: 1px dashed rgba(148, 163, 184, 0.3);
-  color: rgba(226, 232, 240, 0.7);
-}
-
-@media (max-width: 920px) {
-  .deepseek-page__hero {
-    grid-template-columns: 1fr;
-  }
-
-  .deepseek-page__hero-actions {
-    justify-content: start;
-  }
+.settings-panel__title {
+  font-size: 24px;
 }
 
 @media (max-width: 760px) {
-  .deepseek-page {
+  .settings-page {
     padding: 16px;
   }
 
-  .deepseek-page__title {
-    font-size: 32px;
-  }
-
-  .account-list__header {
+  .settings-panel__header {
     flex-direction: column;
     align-items: flex-start;
   }

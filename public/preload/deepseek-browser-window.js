@@ -1,5 +1,3 @@
-const { session: electronSession } = require('electron')
-
 const DEEPSEEK_CHAT_URL = 'https://chat.deepseek.com/'
 const DEEPSEEK_SIGN_IN_URL = 'https://chat.deepseek.com/sign_in'
 
@@ -7,6 +5,7 @@ const runtimeArgs = parseRuntimeArgs(process.argv || [])
 const accountId = runtimeArgs['ds-account-id'] || ''
 const mode = runtimeArgs['ds-mode'] || 'chat'
 const partition = `persist:deepseek-${accountId}`
+const runtimeRawUserToken = decodeRawToken(runtimeArgs['ds-raw-user-token'] || '')
 
 bootstrap()
 
@@ -14,16 +13,13 @@ async function bootstrap() {
   window.addEventListener('DOMContentLoaded', async () => {
     const webview = document.getElementById('deepseek-webview')
     const status = document.getElementById('deepseek-status')
+    const mask = document.getElementById('deepseek-mask')
     if (!webview) return
 
     const sessionData = loadStoredSession()
-    const rawUserToken = sessionData?.rawUserToken || buildRawUserToken(sessionData?.userToken || '')
-
-    await preparePartition({
-      partition,
-      mode,
-      cookies: sessionData?.cookies || []
-    })
+    const rawUserToken = runtimeRawUserToken || sessionData?.rawUserToken || buildRawUserToken(sessionData?.userToken || '')
+    let syncInFlight = false
+    let syncCompleted = false
 
     const preloadUrl = new URL('./deepseek-webview-preload.js', window.location.href).toString()
     webview.setAttribute('partition', partition)
@@ -42,22 +38,43 @@ async function bootstrap() {
       }
     })
 
+    async function runChatSync() {
+      if (mode !== 'chat' || !rawUserToken || syncCompleted || syncInFlight) return
+
+      syncInFlight = true
+      try {
+        const result = await syncChatSession(webview, rawUserToken)
+        updateStatusFromSyncResult(status, result)
+
+        if (result?.ready) {
+          syncCompleted = true
+          revealChatSurface(webview, mask)
+        }
+      } catch (error) {
+        updateStatusFromSyncResult(status, {
+          error: error?.message || String(error || '未知错误')
+        })
+      } finally {
+        syncInFlight = false
+      }
+    }
+
     webview.addEventListener('did-stop-loading', () => {
       if (status) {
         status.textContent = mode === 'bind' ? '请在页面中扫码登录' : '正在同步账号会话...'
       }
+
+      void runChatSync()
     })
 
     webview.addEventListener('ipc-message', async (event) => {
       if (event.channel !== 'deepseek-session') return
 
       const payload = event.args?.[0] || {}
-      const cookies = await readPartitionCookies(partition)
       saveStoredSession({
         userToken: payload.userToken || '',
         rawUserToken: payload.rawUserToken || '',
         localStorage: payload.localStorage || {},
-        cookies,
         authDetectedAt: Date.now()
       })
 
@@ -81,6 +98,14 @@ async function bootstrap() {
         status.textContent = '页面加载失败，请重试'
       }
     })
+
+    if (mode === 'chat' && rawUserToken) {
+      webview.addEventListener('dom-ready', () => {
+        void runChatSync()
+      })
+    } else {
+      revealChatSurface(webview, mask)
+    }
   })
 }
 
@@ -91,6 +116,15 @@ function parseRuntimeArgs(argv) {
     result[key] = rest.join('=')
     return result
   }, {})
+}
+
+function decodeRawToken(value) {
+  if (!value) return ''
+  try {
+    return Buffer.from(value, 'base64').toString('utf8')
+  } catch (error) {
+    return ''
+  }
 }
 
 function buildWebviewArguments({ accountId, mode, rawUserToken }) {
@@ -149,52 +183,102 @@ function updateBindingState(state) {
   })
 }
 
-async function preparePartition({ partition, mode, cookies }) {
-  const partitionSession = electronSession.fromPartition(partition)
-  await clearPartition(partitionSession)
+function buildSessionSyncScript(rawUserToken) {
+  return `
+    (() => {
+      const rawUserToken = ${JSON.stringify(rawUserToken)};
+      const current = localStorage.getItem('userToken') || '';
+      const markerKey = '__utools_deepseek_token_synced';
+      const synced = sessionStorage.getItem(markerKey) === '1';
+      const targetUrl = ${JSON.stringify(DEEPSEEK_CHAT_URL)};
+      const inSignIn = location.pathname.includes('/sign_in');
+      const alreadyReady = current === rawUserToken && !inSignIn;
 
-  if (mode !== 'chat' || !cookies?.length) return
+      if (current !== rawUserToken) {
+        localStorage.setItem('userToken', rawUserToken);
+      }
 
-  await Promise.allSettled(cookies.map((cookie) => {
-    return partitionSession.cookies.set(normalizeCookie(cookie))
-  }))
+      if (alreadyReady) {
+        return {
+          ready: true,
+          changed: false,
+          redirected: false,
+          reloaded: false,
+          href: location.href,
+          current
+        };
+      }
+
+      if (!synced) {
+        sessionStorage.setItem(markerKey, '1');
+
+        if (inSignIn) {
+          location.replace(targetUrl);
+          return { ready: false, changed: true, redirected: true, href: location.href };
+        }
+
+        if (current !== rawUserToken) {
+          location.reload();
+          return { ready: false, changed: true, reloaded: true, href: location.href };
+        }
+      }
+
+      return {
+        ready: current === rawUserToken && !inSignIn,
+        changed: current !== rawUserToken,
+        redirected: false,
+        reloaded: false,
+        href: location.href,
+        current
+      };
+    })();
+  `
 }
 
-async function clearPartition(partitionSession) {
-  const cookies = await partitionSession.cookies.get({})
-
-  await Promise.allSettled(cookies.map((cookie) => {
-    return partitionSession.cookies.remove(
-      `${cookie.secure ? 'https' : 'http'}://${(cookie.domain || 'chat.deepseek.com').replace(/^\./, '')}${cookie.path || '/'}`,
-      cookie.name
-    )
-  }))
-
-  await partitionSession.clearStorageData({
-    origin: DEEPSEEK_CHAT_URL,
-    storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
-  }).catch(() => {})
+async function syncChatSession(webview, rawUserToken) {
+  if (!rawUserToken) return null
+  return webview.executeJavaScript(buildSessionSyncScript(rawUserToken), true)
 }
 
-async function readPartitionCookies(partition) {
-  const partitionSession = electronSession.fromPartition(partition)
-  return partitionSession.cookies.get({}).catch(() => [])
+function revealChatSurface(webview, mask) {
+  webview?.classList.remove('is-hidden')
+  mask?.classList.add('is-hidden')
 }
 
-function normalizeCookie(cookie) {
-  const domain = (cookie.domain || 'chat.deepseek.com').replace(/^\./, '')
-  const routePath = cookie.path || '/'
-  return {
-    url: `${cookie.secure ? 'https' : 'http'}://${domain}${routePath}`,
-    name: cookie.name,
-    value: cookie.value,
-    domain: cookie.domain,
-    path: routePath,
-    secure: Boolean(cookie.secure),
-    httpOnly: Boolean(cookie.httpOnly),
-    expirationDate: cookie.session ? undefined : cookie.expirationDate,
-    sameSite: cookie.sameSite
+function updateStatusFromSyncResult(status, result) {
+  if (!status || !result) return
+
+  if (result.error) {
+    status.textContent = `账号会话回写失败：${result.error}`
+    return
   }
+
+  if (result.redirected) {
+    status.textContent = `已写入 userToken，正在从登录页跳转聊天页...`
+    return
+  }
+
+  if (result.reloaded) {
+    status.textContent = `已写入 userToken，正在刷新会话...`
+    return
+  }
+
+  if (result.ready) {
+    status.textContent = `账号会话同步完成`
+    return
+  }
+
+  if (result.changed) {
+    status.textContent = `已写入 userToken，等待页面完成同步...`
+    return
+  }
+
+  if (typeof result.href === 'string') {
+    status.textContent = `userToken 已存在，当前页：${result.href}`
+    return
+  }
+
+  status.textContent = '账号会话同步完成'
 }
 
 function buildRawUserToken(userToken) {

@@ -1,24 +1,31 @@
 const { ipcRenderer } = require('electron')
 
+const DEEPSEEK_CHAT_URL = 'https://chat.deepseek.com/'
 const TOKEN_KEYS = ['userToken', 'token', 'accessToken', 'auth_token', 'Authorization']
 const runtimeArgs = parseRuntimeArgs(process.argv || [])
 const mode = runtimeArgs['ds-mode'] || 'chat'
-const rawUserToken = resolveRawUserToken()
+const rawUserToken = ensureRawUserTokenPayload(resolveRawUserToken())
 
 bootstrap()
 
 function bootstrap() {
   if (mode === 'chat' && rawUserToken) {
-    try {
-      localStorage.setItem('userToken', rawUserToken)
-    } catch (error) {
-      // Ignore storage injection failures.
-    }
+    syncInjectedToken()
   }
 
   captureSession()
-  window.addEventListener('DOMContentLoaded', captureSession)
-  window.addEventListener('load', captureSession)
+  window.addEventListener('DOMContentLoaded', () => {
+    if (mode === 'chat' && rawUserToken) {
+      syncInjectedToken()
+    }
+    captureSession()
+  })
+  window.addEventListener('load', () => {
+    if (mode === 'chat' && rawUserToken) {
+      syncInjectedToken()
+    }
+    captureSession()
+  })
   setInterval(captureSession, 1500)
 }
 
@@ -61,6 +68,35 @@ function resolveRawUserToken() {
   return readTokenFromHash() || decodeRawToken(runtimeArgs['ds-raw-user-token'] || '')
 }
 
+function buildRawUserToken(userToken) {
+  if (!userToken) return ''
+  return JSON.stringify({
+    value: userToken,
+    __version: '0'
+  })
+}
+
+function ensureRawUserTokenPayload(rawValue) {
+  const normalizedToken = normalizeTokenValue(rawValue)
+  if (!normalizedToken) return ''
+
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim()
+    if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (parsed?.value === normalizedToken) {
+          return trimmed
+        }
+      } catch (error) {
+        // Ignore invalid json.
+      }
+    }
+  }
+
+  return buildRawUserToken(normalizedToken)
+}
+
 function normalizeTokenValue(rawValue) {
   if (typeof rawValue === 'string') {
     const trimmed = rawValue.trim()
@@ -84,6 +120,33 @@ function normalizeTokenValue(rawValue) {
   }
 
   return ''
+}
+
+function syncInjectedToken() {
+  try {
+    const currentRawUserToken = localStorage.getItem('userToken') || ''
+    if (currentRawUserToken === rawUserToken) {
+      return
+    }
+
+    localStorage.setItem('userToken', rawUserToken)
+
+    const hasReloaded = sessionStorage.getItem('__utools_deepseek_token_synced') === '1'
+    if (hasReloaded) {
+      return
+    }
+
+    sessionStorage.setItem('__utools_deepseek_token_synced', '1')
+
+    if (location.pathname.includes('/sign_in')) {
+      location.replace(DEEPSEEK_CHAT_URL)
+      return
+    }
+
+    location.reload()
+  } catch (error) {
+    // Ignore storage injection failures.
+  }
 }
 
 function snapshotLocalStorage() {

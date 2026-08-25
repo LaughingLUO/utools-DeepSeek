@@ -1,229 +1,96 @@
-import {
-  buildPartition,
-  clearBindingState,
-  getAccountSession,
-  getBindingState,
-  saveBindingState
-} from './accountStore'
+import { buildPartition, getDefaultAccount } from './accountStore'
 
 const DEEPSEEK_CHAT_URL = 'https://chat.deepseek.com/'
 const DEEPSEEK_SIGN_IN_URL = 'https://chat.deepseek.com/sign_in'
 const BROWSER_SHELL_PATH = 'browser-shell.html'
+const BROWSER_WINDOW_PRELOAD_PATH = 'preload/deepseek-browser-window.js'
 const WEBVIEW_PRELOAD_PATH = 'preload/deepseek-webview-preload.js'
-const BINDING_TIMEOUT_MS = 10 * 60 * 1000
 
-function getElectronSession() {
-  const runtimeRequire = globalThis.require
-  if (typeof runtimeRequire !== 'function') {
-    throw new Error('electron-runtime-unavailable')
+function buildWindowTitle(accountName) {
+  return `${accountName} - DeepSeek`
+}
+
+function normalizeTokenValue(rawValue) {
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim()
+    if (!trimmed) return ''
+
+    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+      try {
+        return normalizeTokenValue(JSON.parse(trimmed))
+      } catch (error) {
+        return trimmed
+      }
+    }
+
+    return trimmed
   }
 
-  return runtimeRequire('electron').session
-}
-
-function buildWindowTitle(account, mode) {
-  return mode === 'bind' ? `绑定账号 - ${account.name}` : `${account.name} - DeepSeek`
-}
-
-function buildChatUrl(rawUserToken) {
-  if (!rawUserToken) return DEEPSEEK_CHAT_URL
-  const encodedToken = Buffer.from(rawUserToken, 'utf8').toString('base64')
-  return `${DEEPSEEK_CHAT_URL}#__utools_user_token=${encodeURIComponent(encodedToken)}`
-}
-
-function getSessionKey(accountId) {
-  return `deepseek/session/${accountId}`
-}
-
-function getBindingKey(accountId) {
-  return `deepseek/binding/${accountId}`
-}
-
-function normalizeCookie(cookie) {
-  const domain = (cookie.domain || 'chat.deepseek.com').replace(/^\./, '')
-  const routePath = cookie.path || '/'
-  return {
-    url: `${cookie.secure ? 'https' : 'http'}://${domain}${routePath}`,
-    name: cookie.name,
-    value: cookie.value,
-    domain: cookie.domain,
-    path: routePath,
-    secure: Boolean(cookie.secure),
-    httpOnly: Boolean(cookie.httpOnly),
-    expirationDate: cookie.session ? undefined : cookie.expirationDate,
-    sameSite: cookie.sameSite
+  if (rawValue && typeof rawValue === 'object') {
+    if (typeof rawValue.value === 'string' && rawValue.value.trim()) return rawValue.value.trim()
+    if (typeof rawValue.token === 'string' && rawValue.token.trim()) return rawValue.token.trim()
+    if (typeof rawValue.accessToken === 'string' && rawValue.accessToken.trim()) return rawValue.accessToken.trim()
   }
+
+  return ''
 }
 
-async function removeCookies(partitionSession) {
-  const cookies = await partitionSession.cookies.get({}).catch(() => [])
-  await Promise.allSettled(cookies.map((cookie) => {
-    return partitionSession.cookies.remove(
-      `${cookie.secure ? 'https' : 'http'}://${(cookie.domain || 'chat.deepseek.com').replace(/^\./, '')}${cookie.path || '/'}`,
-      cookie.name
-    )
-  }))
+function isUBrowserInstance(value) {
+  return Boolean(
+    value &&
+    typeof value === 'object' &&
+    typeof value.id === 'number' &&
+    typeof value.url === 'string'
+  )
 }
 
-async function clearPartition(partition) {
-  const partitionSession = getElectronSession().fromPartition(partition)
-  await removeCookies(partitionSession)
-  await partitionSession.clearStorageData({
-    storages: ['cookies', 'localstorage', 'indexdb', 'serviceworkers', 'cachestorage']
-  }).catch(() => {})
+function extractUBrowserInstance(results) {
+  if (isUBrowserInstance(results)) return results
+  if (!Array.isArray(results)) return null
+
+  for (let index = results.length - 1; index >= 0; index -= 1) {
+    if (isUBrowserInstance(results[index])) {
+      return results[index]
+    }
+  }
+
+  return null
 }
 
-async function restoreCookies(partition, cookies) {
-  if (!cookies?.length) return
-  const partitionSession = getElectronSession().fromPartition(partition)
-  await Promise.allSettled(cookies.map((cookie) => {
-    return partitionSession.cookies.set(normalizeCookie(cookie))
-  }))
+function extractFirstPayload(results) {
+  if (!Array.isArray(results)) return results
+  if (!results.length) return null
+
+  if (results.length === 1 && isUBrowserInstance(results[0])) {
+    return null
+  }
+
+  return results[0]
 }
 
-async function readPartitionCookies(partition) {
-  const partitionSession = getElectronSession().fromPartition(partition)
-  return partitionSession.cookies.get({}).catch(() => [])
+function extractCookiePayload(results) {
+  const payload = extractFirstPayload(results)
+  if (Array.isArray(payload)) {
+    return payload
+  }
+
+  return []
 }
 
-function buildShellScript(config) {
-  return `
-    (() => {
-      const config = ${JSON.stringify(config)};
-      const webview = document.getElementById('deepseek-webview');
-      const status = document.getElementById('deepseek-status');
-      const sessionKey = config.sessionKey;
-      const bindingKey = config.bindingKey;
+function encodeRuntimeArgument(value) {
+  const input = value || ''
+  const bytes = new TextEncoder().encode(input)
+  let binary = ''
 
-      if (!webview) {
-        if (status) status.textContent = '未找到 DeepSeek 容器';
-        return;
-      }
-
-      function setStatus(text) {
-        if (status) status.textContent = text;
-      }
-
-      function readSession() {
-        return window.utools.dbCryptoStorage.getItem(sessionKey) || {};
-      }
-
-      function saveSession(payload) {
-        const current = readSession();
-        window.utools.dbCryptoStorage.setItem(sessionKey, {
-          ...current,
-          ...payload,
-          localStorage: {
-            ...(current.localStorage || {}),
-            ...(payload.localStorage || {})
-          },
-          updatedAt: Date.now()
-        });
-      }
-
-      function updateBindingState(patch) {
-        const current = window.utools.dbStorage.getItem(bindingKey) || {};
-        window.utools.dbStorage.setItem(bindingKey, {
-          ...current,
-          accountId: config.accountId,
-          updatedAt: Date.now(),
-          ...patch
-        });
-      }
-
-      webview.addEventListener('did-start-loading', () => {
-        setStatus(config.mode === 'bind' ? '正在打开 DeepSeek 登录页...' : '正在打开 DeepSeek...');
-      });
-
-      webview.addEventListener('dom-ready', () => {
-        setStatus(config.mode === 'bind' ? '请在页面中完成登录' : 'DeepSeek 已打开，正在同步会话...');
-
-        if (config.mode === 'chat' && config.rawUserToken) {
-          webview.executeJavaScript(\`
-            (() => {
-              try {
-                const rawToken = \${JSON.stringify(config.rawUserToken)};
-                const current = localStorage.getItem('userToken');
-                if (rawToken && current !== rawToken) {
-                  localStorage.setItem('userToken', rawToken);
-                  return true;
-                }
-              } catch (error) {}
-              return false;
-            })();
-          \`).then((changed) => {
-            if (changed) {
-              setStatus('正在同步当前账号身份...');
-              webview.reload();
-            }
-          }).catch(() => {});
-        }
-      });
-
-      webview.addEventListener('did-stop-loading', () => {
-        setStatus(config.mode === 'bind' ? '等待登录完成并回传 userToken...' : 'DeepSeek 已就绪');
-      });
-
-      webview.addEventListener('did-fail-load', () => {
-        setStatus('页面加载失败，请稍后重试');
-      });
-
-      webview.addEventListener('ipc-message', (event) => {
-        if (event.channel !== 'deepseek-session') return;
-
-        const payload = event.args && event.args[0] ? event.args[0] : {};
-        saveSession({
-          userToken: payload.userToken || '',
-          rawUserToken: payload.rawUserToken || '',
-          localStorage: payload.localStorage || {},
-          authDetectedAt: Date.now()
-        });
-
-        if (config.mode === 'bind' && payload.userToken) {
-          updateBindingState({
-            status: 'ready',
-            name: config.accountName,
-            userToken: payload.userToken,
-            rawUserToken: payload.rawUserToken || '',
-            displayName: payload.displayName || ''
-          });
-
-          setStatus('已获取 userToken，正在返回插件...');
-          window.setTimeout(() => window.close(), 300);
-        }
-      });
-
-      webview.setAttribute('partition', config.partition);
-      webview.setAttribute('preload', config.webviewPreloadPath);
-      webview.setAttribute('allowpopups', 'true');
-      webview.setAttribute('src', config.targetUrl);
-      setStatus(config.mode === 'bind' ? '正在准备登录窗口...' : '正在准备 DeepSeek 窗口...');
-    })();
-  `
-}
-
-function mountShellWindow(browserWindow, account, mode) {
-  const sessionData = getAccountSession(account.id) || {}
-  const script = buildShellScript({
-    accountId: account.id,
-    accountName: account.name,
-    mode,
-    partition: buildPartition(account.id),
-    rawUserToken: sessionData.rawUserToken || '',
-    sessionKey: getSessionKey(account.id),
-    bindingKey: getBindingKey(account.id),
-    targetUrl: mode === 'bind' ? DEEPSEEK_SIGN_IN_URL : buildChatUrl(sessionData.rawUserToken || ''),
-    webviewPreloadPath: WEBVIEW_PRELOAD_PATH
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte)
   })
 
-  browserWindow.webContents.executeJavaScript(script).catch(() => {
-    // Keep shell window visible for manual retry if initialization fails.
-  })
+  return btoa(binary)
 }
 
-function createWindow(account, mode) {
-  let browserWindow = null
-  browserWindow = utools.createBrowserWindow(
+function createWindow(account) {
+  return utools.createBrowserWindow(
     BROWSER_SHELL_PATH,
     {
       show: true,
@@ -231,85 +98,305 @@ function createWindow(account, mode) {
       height: 900,
       minWidth: 1080,
       minHeight: 720,
-      title: buildWindowTitle(account, mode),
+      title: buildWindowTitle(account.name),
       webPreferences: {
         partition: buildPartition(account.id),
-        webviewTag: true
+        preload: BROWSER_WINDOW_PRELOAD_PATH,
+        webviewTag: true,
+        additionalArguments: [
+          `--ds-account-id=${account.id}`,
+          '--ds-mode=chat',
+          `--ds-raw-user-token=${encodeRuntimeArgument(account.rawUserToken || '')}`
+        ]
       }
-    },
-    () => {
-      mountShellWindow(browserWindow, account, mode)
     }
   )
-
-  return browserWindow
 }
 
-function waitForBindingResult(accountId, browserWindow) {
-  const startedAt = Date.now()
-  const partition = buildPartition(accountId)
+function buildSessionProbe(accountName) {
+  return function probe(boundAccountName) {
+    function normalize(rawValue) {
+      if (typeof rawValue === 'string') {
+        const trimmed = rawValue.trim()
+        if (!trimmed) return ''
 
-  return new Promise((resolve, reject) => {
-    const timer = window.setInterval(async () => {
-      const bindingState = getBindingState(accountId)
-      const sessionData = getAccountSession(accountId)
+        if ((trimmed.startsWith('{') && trimmed.endsWith('}')) || (trimmed.startsWith('[') && trimmed.endsWith(']'))) {
+          try {
+            return normalize(JSON.parse(trimmed))
+          } catch (error) {
+            return trimmed
+          }
+        }
 
-      if (bindingState?.status === 'ready' && sessionData?.userToken) {
-        const cookies = await readPartitionCookies(partition)
-        utools.dbCryptoStorage.setItem(getSessionKey(accountId), {
-          ...sessionData,
-          cookies,
-          updatedAt: Date.now()
-        })
-        window.clearInterval(timer)
-        resolve({
-          ...sessionData,
-          cookies
-        })
-        return
+        return trimmed
       }
 
-      if (browserWindow?.isDestroyed?.()) {
-        window.clearInterval(timer)
-        reject(new Error('binding-window-closed'))
-        return
+      if (rawValue && typeof rawValue === 'object') {
+        if (typeof rawValue.value === 'string' && rawValue.value.trim()) return rawValue.value.trim()
+        if (typeof rawValue.token === 'string' && rawValue.token.trim()) return rawValue.token.trim()
+        if (typeof rawValue.accessToken === 'string' && rawValue.accessToken.trim()) return rawValue.accessToken.trim()
       }
 
-      if (Date.now() - startedAt > BINDING_TIMEOUT_MS) {
-        window.clearInterval(timer)
-        reject(new Error('binding-timeout'))
+      return ''
+    }
+
+    function snapshotStorage(storage) {
+      const data = {}
+      try {
+        for (let index = 0; index < storage.length; index += 1) {
+          const key = storage.key(index)
+          if (!key) continue
+          data[key] = storage.getItem(key)
+        }
+      } catch (error) {
+        // Ignore storage snapshot failures.
       }
-    }, 400)
-  })
+      return data
+    }
+
+    function resolveToken(storageState) {
+      const exactKeys = [
+        'userToken',
+        'token',
+        'accessToken',
+        'access_token',
+        'authToken',
+        'auth_token',
+        'jwt',
+        'idToken',
+        'id_token'
+      ]
+
+      for (const key of exactKeys) {
+        const rawValue = storageState[key]
+        const tokenValue = normalize(rawValue)
+        if (tokenValue) {
+          return {
+            token: tokenValue,
+            rawValue: rawValue || '',
+            sourceKey: key
+          }
+        }
+      }
+
+      for (const [key, rawValue] of Object.entries(storageState)) {
+        const lowerKey = key.toLowerCase()
+        if (!/(token|auth|jwt|session)/.test(lowerKey)) continue
+
+        const tokenValue = normalize(rawValue)
+        if (tokenValue) {
+          return {
+            token: tokenValue,
+            rawValue: rawValue || '',
+            sourceKey: key
+          }
+        }
+      }
+
+      return {
+        token: '',
+        rawValue: '',
+        sourceKey: ''
+      }
+    }
+
+    const localStorageState = snapshotStorage(localStorage)
+    const sessionStorageState = snapshotStorage(sessionStorage)
+    const localToken = resolveToken(localStorageState)
+    const sessionToken = resolveToken(sessionStorageState)
+    const tokenState = localToken.token ? localToken : sessionToken
+    const userToken = tokenState.token
+    const rawUserToken = tokenState.rawValue
+    let displayName = ''
+
+    const guessKeys = ['userInfo', 'user', 'profile', 'account', 'deepseek_user']
+    for (const storageState of [localStorageState, sessionStorageState]) {
+      for (const key of guessKeys) {
+        const raw = storageState[key]
+        if (!raw) continue
+
+        try {
+          const parsed = JSON.parse(raw)
+          if (typeof parsed?.name === 'string' && parsed.name.trim()) {
+            displayName = parsed.name.trim()
+            break
+          }
+          if (typeof parsed?.nickname === 'string' && parsed.nickname.trim()) {
+            displayName = parsed.nickname.trim()
+            break
+          }
+          if (typeof parsed?.email === 'string' && parsed.email.trim()) {
+            displayName = parsed.email.trim()
+            break
+          }
+        } catch (error) {
+          // Ignore non-json values.
+        }
+      }
+
+      if (displayName) break
+    }
+
+    return {
+      accountName: boundAccountName,
+      userToken,
+      rawUserToken,
+      displayName,
+      sourceKey: tokenState.sourceKey,
+      currentUrl: location.href,
+      localStorage: {
+        userToken: rawUserToken,
+        keys: Object.keys(localStorageState)
+      },
+      sessionStorage: {
+        userToken: sessionToken.rawValue || '',
+        keys: Object.keys(sessionStorageState)
+      }
+    }
+  }
 }
 
 export async function openChatWindow(account) {
-  const partition = buildPartition(account.id)
-  const sessionData = getAccountSession(account.id) || {}
-
-  await clearPartition(partition)
-  await restoreCookies(partition, sessionData.cookies || [])
-
-  return createWindow(account, 'chat')
+  return createWindow(account)
 }
 
-export async function openBindingSession(account) {
-  const partition = buildPartition(account.id)
-  clearBindingState(account.id)
-  await clearPartition(partition)
+export async function openDefaultChatWindow() {
+  const defaultAccount = getDefaultAccount()
+  if (!defaultAccount?.rawUserToken && !defaultAccount?.userToken) {
+    throw new Error('default-account-missing')
+  }
 
-  saveBindingState(account.id, {
-    status: 'binding',
-    name: account.name,
-    startedAt: Date.now()
-  })
+  return openChatWindow(defaultAccount)
+}
 
-  const browserWindow = createWindow(account, 'bind')
-  const sessionData = await waitForBindingResult(account.id, browserWindow)
-  return sessionData
+export async function openBindingWindow() {
+  const results = await utools.ubrowser
+    .goto(DEEPSEEK_CHAT_URL)
+    .evaluate(() => {
+      try {
+        sessionStorage.clear()
+      } catch (error) {}
+
+      try {
+        localStorage.clear()
+      } catch (error) {}
+
+      return true
+    })
+    .clearCookies(DEEPSEEK_CHAT_URL)
+    .goto(DEEPSEEK_SIGN_IN_URL)
+    .viewport(1280, 860)
+    .run({
+      show: true,
+      width: 1280,
+      height: 860,
+      center: true,
+      resizable: true,
+      minimizable: true,
+      maximizable: true,
+      closable: true,
+      titleBarStyle: 'default'
+    })
+
+  const instance = extractUBrowserInstance(results)
+  if (!instance?.id) {
+    throw new Error('binding-window-open-failed')
+  }
+
+  return instance
+}
+
+export function hasBindingWindow(ubrowserId) {
+  return utools.getIdleUBrowsers().some((item) => item.id === ubrowserId)
+}
+
+export async function readBindingSession(ubrowserId, accountName) {
+  const results = await utools.ubrowser
+    .evaluate(buildSessionProbe(accountName))
+    .run(ubrowserId)
+
+  const payload = extractFirstPayload(results)
+  if (!payload) {
+    return null
+  }
+
+  return {
+    ...payload,
+    userToken: normalizeTokenValue(payload.userToken),
+    rawUserToken: payload.rawUserToken || ''
+  }
+}
+
+export async function readBindingCookies(ubrowserId) {
+  const results = await utools.ubrowser
+    .cookies({ domain: 'chat.deepseek.com' })
+    .run(ubrowserId)
+
+  return extractCookiePayload(results)
+}
+
+export async function navigateBindingWindowToChat(ubrowserId) {
+  await utools.ubrowser
+    .goto(DEEPSEEK_CHAT_URL)
+    .run(ubrowserId)
+}
+
+export async function cleanupBindingWindow(ubrowserId) {
+  await utools.ubrowser
+    .evaluate(() => {
+      try {
+        sessionStorage.clear()
+      } catch (error) {}
+
+      try {
+        localStorage.clear()
+      } catch (error) {}
+
+      return true
+    })
+    .evaluate(() => {
+      try {
+        if (typeof indexedDB !== 'undefined' && typeof indexedDB.databases === 'function') {
+          indexedDB.databases().then((databases) => {
+            databases
+              .map((item) => item?.name)
+              .filter(Boolean)
+              .forEach((name) => {
+                try {
+                  indexedDB.deleteDatabase(name)
+                } catch (error) {}
+              })
+          }).catch(() => {})
+        }
+      } catch (error) {}
+
+      try {
+        if (typeof caches !== 'undefined' && typeof caches.keys === 'function') {
+          caches.keys().then((keys) => {
+            keys.forEach((key) => {
+              try {
+                caches.delete(key)
+              } catch (error) {}
+            })
+          }).catch(() => {})
+        }
+      } catch (error) {}
+
+      return true
+    })
+    .clearCookies(DEEPSEEK_CHAT_URL)
+    .goto('about:blank')
+    .run(ubrowserId)
+    .catch(() => {})
+
+  utools.clearUBrowserCache()
+
+  await utools.ubrowser
+    .hide()
+    .run(ubrowserId)
+    .catch(() => {})
 }
 
 export async function clearAccountBrowserProfile(accountId) {
-  clearBindingState(accountId)
-  await clearPartition(buildPartition(accountId))
+  void accountId
 }

@@ -33,6 +33,12 @@
         width: 100%;
         height: 100%;
         border: 0;
+        opacity: 1;
+        transition: opacity 180ms ease;
+      }
+
+      #deepseek-webview.is-hidden {
+        opacity: 0;
       }
 
       .shell-status {
@@ -47,12 +53,66 @@
         font-size: 13px;
         backdrop-filter: blur(10px);
         pointer-events: none;
+        z-index: 2;
+      }
+
+      .shell-mask {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        background:
+          radial-gradient(circle at top, rgba(37, 99, 235, 0.18), transparent 32%),
+          linear-gradient(180deg, #091120 0%, #0f172a 100%);
+        z-index: 1;
+        transition: opacity 180ms ease, visibility 180ms ease;
+      }
+
+      .shell-mask.is-hidden {
+        opacity: 0;
+        visibility: hidden;
+      }
+
+      .shell-mask__content {
+        display: grid;
+        gap: 14px;
+        justify-items: center;
+      }
+
+      .shell-mask__logo {
+        width: 72px;
+        height: 72px;
+        object-fit: contain;
+        filter: drop-shadow(0 10px 20px rgba(37, 99, 235, 0.2));
+      }
+
+      .shell-mask__title {
+        color: #e2e8f0;
+        font-size: 24px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
       }
     </style>
   </head>
   <body>
     <main class="shell">
-      <webview id="deepseek-webview"></webview>
+      <webview
+        id="deepseek-webview"
+        class="is-hidden"
+      ></webview>
+      <div
+        id="deepseek-mask"
+        class="shell-mask"
+      >
+        <div class="shell-mask__content">
+          <img
+            class="shell-mask__logo"
+            src="./logo.png"
+            alt="DeepSeek"
+          />
+          <div class="shell-mask__title">DeepSeek</div>
+        </div>
+      </div>
       <div
         id="deepseek-status"
         class="shell-status"
