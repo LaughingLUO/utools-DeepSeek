@@ -1,7 +1,12 @@
 {
+  "$schema": "../node_modules/utools-api-types/resource/utools.schema.json",
   "main": "index.html",
   "preload": "preload/services.js",
   "logo": "logo.png",
+  "pluginSetting": {
+    "single": true,
+    "height": 680
+  },
   "development": {
     "main": "http://localhost:5173"
   },
@@ -11,6 +16,14 @@
       "explain": "DeepSeek网页版",
       "cmds": [
         "DeepSeek"
+      ]
+    },
+    {
+      "code": "DeepSeekSettings",
+      "explain": "DeepSeek账号设置",
+      "cmds": [
+        "DeepSeek 设置",
+        "DeepSeek 账号设置"
       ]
     }
   ]
