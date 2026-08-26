@@ -4,6 +4,7 @@ import {
   deleteAccount,
   getAccountById,
   listAccountsState,
+  renameAccount,
   setDefaultAccount,
   upsertAccount
 } from '../services/accountStore'
@@ -26,6 +27,14 @@ function createDialogState() {
     isCapturing: false,
     capturedSession: null,
     statusText: ''
+  }
+}
+
+function createRenameDialogState() {
+  return {
+    open: false,
+    accountId: '',
+    name: ''
   }
 }
 
@@ -59,6 +68,7 @@ export function useDeepSeekAccounts() {
   const accounts = shallowRef([])
   const defaultAccountId = shallowRef('')
   const dialogState = reactive(createDialogState())
+  const renameDialogState = reactive(createRenameDialogState())
 
   let bindingWindowId = null
   let bindingPollTimer = null
@@ -114,6 +124,12 @@ export function useDeepSeekAccounts() {
     dialogState.open = true
   }
 
+  function openRenameDialog(account) {
+    renameDialogState.open = true
+    renameDialogState.accountId = account.id
+    renameDialogState.name = account.name
+  }
+
   function openRebindDialog(account) {
     resetDialog()
     dialogState.open = true
@@ -128,8 +144,16 @@ export function useDeepSeekAccounts() {
     resetDialog()
   }
 
+  function closeRenameDialog() {
+    Object.assign(renameDialogState, createRenameDialogState())
+  }
+
   function updateDialogName(name) {
     dialogState.name = name
+  }
+
+  function updateRenameDialogName(name) {
+    renameDialogState.name = name
   }
 
   function startBindingPolling(accountName) {
@@ -264,6 +288,29 @@ export function useDeepSeekAccounts() {
     refresh()
   }
 
+  function saveRename() {
+    const trimmedName = renameDialogState.name.trim()
+    if (!trimmedName) {
+      notify('账户名称不能为空')
+      return
+    }
+
+    const currentAccount = getAccountById(renameDialogState.accountId)
+    if (!currentAccount) {
+      closeRenameDialog()
+      return
+    }
+
+    if (trimmedName === currentAccount.name) {
+      closeRenameDialog()
+      return
+    }
+
+    renameAccount(currentAccount.id, trimmedName)
+    refresh()
+    closeRenameDialog()
+  }
+
   async function removeAccount(account) {
     deleteAccount(account.id)
     refresh()
@@ -276,18 +323,23 @@ export function useDeepSeekAccounts() {
     defaultAccountId,
     defaultAccount,
     dialogState,
+    renameDialogState,
     hasAccounts,
     canSavePending,
     canStartCapture,
     openCreateDialog,
+    openRenameDialog,
     openRebindDialog,
     closeDialog,
+    closeRenameDialog,
     updateDialogName,
+    updateRenameDialogName,
     startBindingFlow,
     saveBinding,
     launchAccount,
     launchDefaultAccount,
     makeDefault,
+    saveRename,
     removeAccount,
     refresh
   }

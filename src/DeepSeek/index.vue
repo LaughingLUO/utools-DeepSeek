@@ -1,6 +1,7 @@
 <script setup>
 import AccountBindDialog from './components/AccountBindDialog.vue'
 import AccountsTable from './components/AccountsTable.vue'
+import RenameAccountDialog from './components/RenameAccountDialog.vue'
 import { useDeepSeekAccounts } from './composables/useDeepSeekAccounts'
 
 defineProps({
@@ -14,15 +15,20 @@ const {
   accounts,
   defaultAccountId,
   dialogState,
+  renameDialogState,
   hasAccounts,
   canSavePending,
   canStartCapture,
   openCreateDialog,
+  openRenameDialog,
   closeDialog,
+  closeRenameDialog,
   updateDialogName,
+  updateRenameDialogName,
   startBindingFlow,
   saveBinding,
   makeDefault,
+  saveRename,
   removeAccount
 } = useDeepSeekAccounts()
 </script>
@@ -33,12 +39,14 @@ const {
       <div class="settings-panel__header">
         <h2 class="settings-panel__title">用户列表</h2>
 
-        <button
-          class="primary-button"
-          @click="openCreateDialog"
-        >
-          新增绑定账号
-        </button>
+        <div class="settings-panel__actions">
+          <button
+            class="primary-button"
+            @click="openCreateDialog"
+          >
+            新增绑定账号
+          </button>
+        </div>
       </div>
 
       <AccountsTable
@@ -46,6 +54,7 @@ const {
         :default-account-id="defaultAccountId"
         :has-accounts="hasAccounts"
         @set-default="makeDefault"
+        @rename="openRenameDialog"
         @remove="removeAccount"
       />
     </section>
@@ -63,6 +72,14 @@ const {
       @close="closeDialog"
       @start-login="startBindingFlow"
       @save="saveBinding"
+    />
+
+    <RenameAccountDialog
+      :open="renameDialogState.open"
+      :name="renameDialogState.name"
+      @update:name="updateRenameDialogName"
+      @close="closeRenameDialog"
+      @save="saveRename"
     />
   </main>
 </template>
@@ -98,6 +115,14 @@ const {
   align-items: center;
 }
 
+.settings-panel__actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .settings-panel__title {
   font-size: 24px;
 }
@@ -110,6 +135,11 @@ const {
   .settings-panel__header {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .settings-panel__actions {
+    width: 100%;
+    justify-content: flex-start;
   }
 }
 </style>

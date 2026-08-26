@@ -16,6 +16,7 @@ const props = defineProps({
 
 const emit = defineEmits([
   'set-default',
+  'rename',
   'remove'
 ])
 </script>
@@ -42,6 +43,12 @@ const emit = defineEmits([
           <td>{{ account.id === defaultAccountId ? '是' : '否' }}</td>
           <td>
             <div class="accounts-table__actions">
+              <button
+                class="ghost-button"
+                @click="emit('rename', account)"
+              >
+                修改名称
+              </button>
               <button
                 class="ghost-button"
                 :disabled="account.id === defaultAccountId"

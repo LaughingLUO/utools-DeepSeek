@@ -1,7 +1,16 @@
+let electronSession = null
+
+try {
+  electronSession = require('electron').session
+} catch (error) {
+  electronSession = null
+}
+
 const DEEPSEEK_CHAT_URL = 'https://chat.deepseek.com/'
 const DEEPSEEK_SIGN_IN_URL = 'https://chat.deepseek.com/sign_in'
 const ACCOUNT_STATE_KEY = 'deepseek/accounts/state'
 const FAB_POSITION_KEY = 'deepseek/browser-fab-position'
+const LAST_CHAT_URL_KEY = 'deepseek:last-chat-url'
 const FAB_MARGIN = 12
 const FAB_DEFAULT_LEFT = 24
 const FAB_DEFAULT_TOP = 88
@@ -30,9 +39,14 @@ async function bootstrap() {
     let syncCompleted = false
     let currentAccountId = accountId
     let currentUrl = mode === 'bind' ? DEEPSEEK_SIGN_IN_URL : DEEPSEEK_CHAT_URL
+    let lastChatUrl = readLastChatUrl()
 
     const syncCurrentUrl = () => {
       currentUrl = getLiveWebviewUrl(webview, currentUrl)
+      if (isDeepSeekChatPage(currentUrl)) {
+        lastChatUrl = currentUrl
+        persistLastChatUrl(lastChatUrl)
+      }
       return currentUrl
     }
 
@@ -157,6 +171,7 @@ async function bootstrap() {
       fab,
       webview,
       getCurrentUrl: () => syncCurrentUrl(),
+      getLastChatUrl: () => lastChatUrl || readLastChatUrl() || DEEPSEEK_CHAT_URL,
       getCurrentAccountId: () => currentAccountId,
       onAccountChange: async (nextAccountId) => {
         const accountsState = listBoundAccounts()
@@ -165,8 +180,12 @@ async function bootstrap() {
 
         currentAccountId = targetAccount.id
         const nextRawUserToken = targetAccount.rawUserToken || buildRawUserToken(targetAccount.userToken || '')
+        await resetChatSession(webview).catch(() => null)
+        currentUrl = DEEPSEEK_CHAT_URL
+        lastChatUrl = DEEPSEEK_CHAT_URL
+        persistLastChatUrl(lastChatUrl)
         await syncChatSession(webview, nextRawUserToken).catch(() => null)
-        webview.reload()
+        webview.loadURL(DEEPSEEK_CHAT_URL)
         updateFabState({
           currentUrl,
           currentAccountId
@@ -357,9 +376,79 @@ function buildSessionSyncScript(rawUserToken) {
   `
 }
 
+function buildSessionResetScript() {
+  return `
+    (async () => {
+      try {
+        sessionStorage.clear();
+      } catch (error) {}
+
+      try {
+        localStorage.clear();
+      } catch (error) {}
+
+      try {
+        if (window.caches?.keys) {
+          const cacheKeys = await window.caches.keys();
+          await Promise.all(cacheKeys.map((key) => window.caches.delete(key)));
+        }
+      } catch (error) {}
+
+      try {
+        if (window.indexedDB?.databases) {
+          const databases = await window.indexedDB.databases();
+          await Promise.all(
+            (databases || [])
+              .map((item) => item?.name)
+              .filter(Boolean)
+              .map((name) => new Promise((resolve) => {
+                try {
+                  const request = window.indexedDB.deleteDatabase(name);
+                  request.onsuccess = () => resolve(true);
+                  request.onerror = () => resolve(false);
+                  request.onblocked = () => resolve(false);
+                } catch (error) {
+                  resolve(false);
+                }
+              }))
+          );
+        }
+      } catch (error) {}
+
+      return true;
+    })();
+  `
+}
+
 async function syncChatSession(webview, rawUserToken) {
   if (!rawUserToken) return null
   return webview.executeJavaScript(buildSessionSyncScript(rawUserToken), true)
+}
+
+async function resetChatSession(webview) {
+  if (!webview) return
+
+  const partitionName = webview.getAttribute('partition') || partition
+  const storageSession = electronSession?.fromPartition?.(partitionName) || null
+
+  if (storageSession) {
+    await storageSession.clearStorageData({
+      origin: 'https://chat.deepseek.com',
+      storages: [
+        'cookies',
+        'localstorage',
+        'indexdb',
+        'serviceworkers',
+        'cachestorage',
+        'filesystem',
+        'websql'
+      ]
+    }).catch(() => null)
+
+    await storageSession.clearAuthCache?.().catch(() => null)
+  }
+
+  await webview.executeJavaScript(buildSessionResetScript(), true).catch(() => null)
 }
 
 function revealChatSurface(webview, mask) {
@@ -369,7 +458,7 @@ function revealChatSurface(webview, mask) {
   status?.classList.add('is-hidden')
 }
 
-function initializeFab({ fab, webview, getCurrentUrl, getCurrentAccountId, onAccountChange }) {
+function initializeFab({ fab, webview, getCurrentUrl, getLastChatUrl, getCurrentAccountId, onAccountChange }) {
   if (!fab || !webview) return
 
   const handle = document.getElementById('deepseek-fab-handle')
@@ -471,7 +560,7 @@ function initializeFab({ fab, webview, getCurrentUrl, getCurrentAccountId, onAcc
   })
 
   returnButton.addEventListener('click', () => {
-    webview.loadURL(DEEPSEEK_CHAT_URL)
+    webview.loadURL(getLastChatUrl())
     fab.classList.remove('is-open')
   })
 
@@ -533,11 +622,24 @@ function shouldShowReturnButton(currentUrl) {
     const url = new URL(currentUrl)
     if (url.origin !== 'https://chat.deepseek.com') return true
     if (url.pathname.includes('/sign_in')) return true
-    if (url.pathname === '/' || url.pathname === '') return false
-    if (url.pathname === '/chat' || url.pathname.startsWith('/chat/')) return false
-    if (url.pathname === '/a/chat' || url.pathname.startsWith('/a/chat/')) return false
-    if (/^\/c\/[^/]+/.test(url.pathname)) return false
-    return true
+    return !isDeepSeekChatPage(currentUrl)
+  } catch (error) {
+    return false
+  }
+}
+
+function isDeepSeekChatPage(currentUrl) {
+  if (!currentUrl) return false
+
+  try {
+    const url = new URL(currentUrl)
+    if (url.origin !== 'https://chat.deepseek.com') return false
+    if (url.pathname.includes('/sign_in')) return false
+    if (url.pathname === '/' || url.pathname === '') return true
+    if (url.pathname === '/chat' || url.pathname.startsWith('/chat/')) return true
+    if (url.pathname === '/a/chat' || url.pathname.startsWith('/a/chat/')) return true
+    if (/^\/c\/[^/]+/.test(url.pathname)) return true
+    return false
   } catch (error) {
     return false
   }
@@ -674,6 +776,24 @@ function readFabPosition() {
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function persistLastChatUrl(url) {
+  if (!url) return
+
+  try {
+    localStorage.setItem(LAST_CHAT_URL_KEY, url)
+  } catch (error) {
+    // Ignore storage write failures.
+  }
+}
+
+function readLastChatUrl() {
+  try {
+    return localStorage.getItem(LAST_CHAT_URL_KEY) || ''
+  } catch (error) {
+    return ''
+  }
 }
 
 function getLiveWebviewUrl(webview, fallback = '') {

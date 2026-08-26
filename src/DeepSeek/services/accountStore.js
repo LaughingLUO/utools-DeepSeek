@@ -169,3 +169,26 @@ export function deleteAccount(accountId) {
 
   utools.dbCryptoStorage.removeItem(`${LEGACY_SESSION_PREFIX}${accountId}`)
 }
+
+export function renameAccount(accountId, name) {
+  const state = readState()
+  const nextName = String(name || '').trim()
+  if (!nextName) return null
+
+  const accountIndex = (state.accounts || []).findIndex((item) => item.id === accountId)
+  if (accountIndex < 0) return null
+
+  const nextAccounts = [...state.accounts]
+  nextAccounts.splice(accountIndex, 1, normalizeAccount({
+    ...nextAccounts[accountIndex],
+    name: nextName,
+    updatedAt: Date.now()
+  }))
+
+  writeState({
+    ...state,
+    accounts: nextAccounts
+  })
+
+  return getAccountById(accountId)
+}
