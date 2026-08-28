@@ -89,28 +89,87 @@ function encodeRuntimeArgument(value) {
   return btoa(binary)
 }
 
-function createWindow(account) {
-  return utools.createBrowserWindow(
-    BROWSER_SHELL_PATH,
-    {
-      show: true,
-      width: 1440,
-      height: 900,
-      minWidth: 1080,
-      minHeight: 720,
-      title: buildWindowTitle(account.name),
-      webPreferences: {
-        partition: buildPartition(account.id),
-        preload: BROWSER_WINDOW_PRELOAD_PATH,
-        webviewTag: true,
-        additionalArguments: [
-          `--ds-account-id=${account.id}`,
-          '--ds-mode=chat',
-          `--ds-raw-user-token=${encodeRuntimeArgument(account.rawUserToken || '')}`
-        ]
+function wait(ms) {
+  return new Promise((resolve) => {
+    window.setTimeout(resolve, ms)
+  })
+}
+
+async function ensureBrowserWindowActive(browserWindow) {
+  if (!browserWindow) return browserWindow
+
+  for (let index = 0; index < 6; index += 1) {
+    try {
+      if (browserWindow.isMinimized?.()) {
+        browserWindow.restore?.()
       }
+    } catch (error) {}
+
+    try {
+      browserWindow.show?.()
+    } catch (error) {}
+
+    try {
+      browserWindow.focus?.()
+    } catch (error) {}
+
+    await wait(80)
+
+    try {
+      if (browserWindow.isFocused?.()) {
+        return browserWindow
+      }
+    } catch (error) {}
+  }
+
+  return browserWindow
+}
+
+function createWindow(account) {
+  return new Promise((resolve, reject) => {
+    let resolved = false
+
+    const finalizeResolve = async (browserWindow) => {
+      if (resolved) return
+      resolved = true
+      const activeWindow = await ensureBrowserWindowActive(browserWindow)
+      window.setTimeout(() => resolve(activeWindow), 120)
     }
-  )
+
+    try {
+      const browserWindow = utools.createBrowserWindow(
+        BROWSER_SHELL_PATH,
+        {
+          show: false,
+          width: 1440,
+          height: 900,
+          minWidth: 1080,
+          minHeight: 720,
+          title: buildWindowTitle(account.name),
+          webPreferences: {
+            partition: buildPartition(account.id),
+            preload: BROWSER_WINDOW_PRELOAD_PATH,
+            webviewTag: true,
+            additionalArguments: [
+              `--ds-account-id=${account.id}`,
+              '--ds-mode=chat',
+              `--ds-raw-user-token=${encodeRuntimeArgument(account.rawUserToken || '')}`
+            ]
+          }
+        },
+        () => {
+          void finalizeResolve(browserWindow)
+        }
+      )
+
+      window.setTimeout(() => {
+        if (resolved) return
+        void finalizeResolve(browserWindow)
+      }, 1200)
+    } catch (error) {
+      reject(error)
+    }
+  })
 }
 
 function buildSessionProbe(accountName) {
