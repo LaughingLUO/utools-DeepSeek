@@ -364,6 +364,11 @@
         background: #232838;
       }
 
+      .shell-fab__button.is-active {
+        background: rgba(77, 107, 254, 0.12);
+        border-color: rgba(77, 107, 254, 0.38);
+      }
+
       .shell-fab__button-icon {
         width: 32px;
         height: 32px;
@@ -376,6 +381,38 @@
         flex: 0 0 32px;
         font-size: 13px;
         line-height: 1;
+      }
+
+      .shell-fab__button-icon svg {
+        width: 20px;
+        height: 20px;
+      }
+
+      #deepseek-fab-pin-window .shell-fab__button-icon svg {
+        width: 17px;
+        height: 17px;
+      }
+
+      .shell-fab__button-icon .pin-solid-icon {
+        display: none;
+      }
+
+      .shell-fab__button-icon .pin-line-icon {
+        display: block;
+      }
+
+      .shell-fab__button.is-active .shell-fab__button-icon .pin-line-icon {
+        display: none;
+      }
+
+      .shell-fab__button.is-active .shell-fab__button-icon .pin-solid-icon {
+        display: block;
+      }
+
+      .shell-fab__button.is-active .shell-fab__button-icon {
+        background: #4d6bfe;
+        color: #ffffff;
+        box-shadow: 0 2px 8px rgba(77, 107, 254, 0.38);
       }
 
       .shell-fab__button-text {
@@ -446,10 +483,7 @@
       }
 
       .shell-fab__account-id {
-        margin-top: 1px;
-        color: #808797;
-        font-size: 11px;
-        font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+        display: none;
       }
 
       .shell-fab__account-badge {
@@ -629,9 +663,20 @@
         background: #f3f4f7;
       }
 
+      :root[data-theme='light'] .shell-fab__button.is-active {
+        background: #eef2ff;
+        border-color: rgba(77, 107, 254, 0.22);
+      }
+
       :root[data-theme='light'] .shell-fab__button-icon {
         background: #eceef4;
         color: #4a5060;
+      }
+
+      :root[data-theme='light'] .shell-fab__button.is-active .shell-fab__button-icon {
+        background: #4d6bfe;
+        color: #ffffff;
+        box-shadow: 0 2px 8px rgba(77, 107, 254, 0.28);
       }
 
       :root[data-theme='light'] .shell-fab__label {
@@ -821,11 +866,35 @@
                 <span class="shell-fab__button-text">返回 DeepSeek</span>
               </button>
               <button
+                id="deepseek-fab-pin-window"
+                class="shell-fab__button shell-fab__button--secondary"
+                type="button"
+                aria-pressed="false"
+              >
+                <span class="shell-fab__button-icon">
+                  <svg class="pin-line-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M8 3h8" />
+                    <path d="M10 3v6.2l-4 5.2v1.8h12v-1.8l-4-5.2V3" />
+                    <path d="M12 16.2V21" />
+                    <path d="M9.5 21h5" />
+                  </svg>
+                  <svg class="pin-solid-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                    <path d="M8 3.8A1.8 1.8 0 0 1 9.8 2h4.4A1.8 1.8 0 0 1 16 3.8V8l3.1 4.35c.2.3.3.63.3.99v1.36c0 .72-.58 1.3-1.3 1.3h-4.35v4.55a1 1 0 1 1-2 0V16H7.4c-.72 0-1.3-.58-1.3-1.3v-1.36c0-.36.1-.7.3-.99L9.5 8V3.8H8Z" />
+                  </svg>
+                </span>
+                <span class="shell-fab__button-text">窗口置顶</span>
+              </button>
+              <button
                 id="deepseek-fab-copy-link"
                 class="shell-fab__button shell-fab__button--secondary"
                 type="button"
               >
-                <span class="shell-fab__button-icon">⎘</span>
+                <span class="shell-fab__button-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M10.6 13.4a3 3 0 0 0 4.24 0l3.18-3.18a3 3 0 0 0-4.24-4.24l-1.1 1.1" />
+                    <path d="M13.4 10.6a3 3 0 0 0-4.24 0l-3.18 3.18a3 3 0 0 0 4.24 4.24l1.1-1.1" />
+                  </svg>
+                </span>
                 <span class="shell-fab__button-text">复制链接</span>
               </button>
             </div>

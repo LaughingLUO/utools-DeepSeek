@@ -89,6 +89,10 @@ function encodeRuntimeArgument(value) {
   return btoa(binary)
 }
 
+function buildRuntimeWindowId(accountId) {
+  return `${accountId || 'deepseek'}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 function wait(ms) {
   return new Promise((resolve) => {
     window.setTimeout(resolve, ms)
@@ -125,14 +129,50 @@ async function ensureBrowserWindowActive(browserWindow) {
   return browserWindow
 }
 
+function sendWindowPinState(browserWindow, runtimeWindowId, pinned) {
+  try {
+    browserWindow.webContents?.send?.('deepseek-window-pin-state', {
+      windowId: runtimeWindowId,
+      pinned
+    })
+  } catch (error) {}
+}
+
+function bindAlwaysOnTopBridge(browserWindow, runtimeWindowId) {
+  const onToggle = window.services?.onDeepSeekWindowPinToggle
+  if (typeof onToggle !== 'function') return
+
+  onToggle((payload) => {
+    if (!payload || payload.windowId !== runtimeWindowId) return
+
+    const nextPinned = Boolean(payload.pinned)
+
+    try {
+      browserWindow.setAlwaysOnTop?.(nextPinned)
+    } catch (error) {}
+
+    let actualPinned = nextPinned
+    try {
+      actualPinned = browserWindow.isAlwaysOnTop?.() ?? nextPinned
+    } catch (error) {}
+
+    sendWindowPinState(browserWindow, runtimeWindowId, actualPinned)
+  })
+}
+
 function createWindow(account) {
   return new Promise((resolve, reject) => {
     let resolved = false
+    const runtimeWindowId = buildRuntimeWindowId(account.id)
 
     const finalizeResolve = async (browserWindow) => {
       if (resolved) return
       resolved = true
+      try {
+        browserWindow.maximize?.()
+      } catch (error) {}
       const activeWindow = await ensureBrowserWindowActive(browserWindow)
+      sendWindowPinState(activeWindow, runtimeWindowId, false)
       window.setTimeout(() => resolve(activeWindow), 120)
     }
 
@@ -143,8 +183,8 @@ function createWindow(account) {
           show: false,
           width: 1440,
           height: 900,
-          minWidth: 1080,
-          minHeight: 720,
+          minWidth: 660,
+          minHeight: 440,
           title: buildWindowTitle(account.name),
           webPreferences: {
             partition: buildPartition(account.id),
@@ -152,6 +192,7 @@ function createWindow(account) {
             webviewTag: true,
             additionalArguments: [
               `--ds-account-id=${account.id}`,
+              `--ds-window-id=${runtimeWindowId}`,
               '--ds-mode=chat',
               `--ds-raw-user-token=${encodeRuntimeArgument(account.rawUserToken || '')}`
             ]
@@ -161,6 +202,8 @@ function createWindow(account) {
           void finalizeResolve(browserWindow)
         }
       )
+
+      bindAlwaysOnTopBridge(browserWindow, runtimeWindowId)
 
       window.setTimeout(() => {
         if (resolved) return

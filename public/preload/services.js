@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { ipcRenderer } = require('electron')
 
 // 通过 window 对象向渲染进程注入 nodejs 能力
 window.services = {
@@ -20,5 +21,18 @@ window.services = {
     const filePath = path.join(window.utools.getPath('downloads'), Date.now().toString() + '.' + matchs[1])
     fs.writeFileSync(filePath, base64Url.substring(matchs[0].length), { encoding: 'base64' })
     return filePath
+  },
+  onDeepSeekWindowPinToggle (callback) {
+    if (typeof callback !== 'function') return () => {}
+
+    const listener = (_event, payload) => {
+      callback(payload)
+    }
+
+    ipcRenderer.on('deepseek-window-pin-toggle', listener)
+
+    return () => {
+      ipcRenderer.removeListener('deepseek-window-pin-toggle', listener)
+    }
   }
 }
