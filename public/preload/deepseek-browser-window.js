@@ -1,9 +1,13 @@
 let electronSession = null
+let ipcRenderer = null
 
 try {
-  electronSession = require('electron').session
+  const electron = require('electron')
+  electronSession = electron.session
+  ipcRenderer = electron.ipcRenderer
 } catch (error) {
   electronSession = null
+  ipcRenderer = null
 }
 
 const DEEPSEEK_CHAT_URL = 'https://chat.deepseek.com/'
@@ -17,6 +21,7 @@ const FAB_DEFAULT_TOP = 88
 
 const runtimeArgs = parseRuntimeArgs(process.argv || [])
 const accountId = runtimeArgs['ds-account-id'] || ''
+const runtimeWindowId = runtimeArgs['ds-window-id'] || ''
 const mode = runtimeArgs['ds-mode'] || 'chat'
 const partition = `persist:deepseek-${accountId}`
 const runtimeRawUserToken = decodeRawToken(runtimeArgs['ds-raw-user-token'] || '')
@@ -464,14 +469,16 @@ function initializeFab({ fab, webview, getCurrentUrl, getLastChatUrl, getCurrent
   const handle = document.getElementById('deepseek-fab-handle')
   const returnButton = document.getElementById('deepseek-fab-return')
   const copyLinkButton = document.getElementById('deepseek-fab-copy-link')
+  const pinWindowButton = document.getElementById('deepseek-fab-pin-window')
   const accountCard = document.getElementById('deepseek-fab-account-card')
   const accountDropdown = document.getElementById('deepseek-fab-account-dropdown')
   const dragShield = document.getElementById('deepseek-drag-shield')
 
-  if (!handle || !returnButton || !copyLinkButton || !accountCard || !accountDropdown || !dragShield) return
+  if (!handle || !returnButton || !copyLinkButton || !pinWindowButton || !accountCard || !accountDropdown || !dragShield) return
 
   hydrateFabPosition(fab)
   renderFabAccounts(getCurrentAccountId())
+  updatePinButtonState(pinWindowButton, false)
 
   const refreshFabState = () => {
     updateFabState({
@@ -559,6 +566,25 @@ function initializeFab({ fab, webview, getCurrentUrl, getLastChatUrl, getCurrent
     utools.copyText(url)
   })
 
+  pinWindowButton.addEventListener('click', () => {
+    const nextPinned = !pinWindowButton.classList.contains('is-active')
+    updatePinButtonState(pinWindowButton, nextPinned)
+
+    try {
+      utools.sendToParent('deepseek-window-pin-toggle', {
+        windowId: runtimeWindowId,
+        pinned: nextPinned
+      })
+    } catch (error) {
+      updatePinButtonState(pinWindowButton, !nextPinned)
+    }
+  })
+
+  ipcRenderer?.on?.('deepseek-window-pin-state', (_event, payload) => {
+    if (payload?.windowId !== runtimeWindowId) return
+    updatePinButtonState(pinWindowButton, Boolean(payload.pinned))
+  })
+
   returnButton.addEventListener('click', () => {
     webview.loadURL(getLastChatUrl())
     fab.classList.remove('is-open')
@@ -602,6 +628,18 @@ function initializeFab({ fab, webview, getCurrentUrl, getLastChatUrl, getCurrent
   window.addEventListener('resize', () => {
     hydrateFabPosition(fab)
   })
+}
+
+function updatePinButtonState(button, pinned) {
+  if (!button) return
+
+  button.classList.toggle('is-active', pinned)
+  button.setAttribute('aria-pressed', String(pinned))
+
+  const text = button.querySelector('.shell-fab__button-text')
+  if (text) {
+    text.textContent = pinned ? '取消置顶' : '窗口置顶'
+  }
 }
 
 function updateFabState({ currentUrl, currentAccountId }) {
