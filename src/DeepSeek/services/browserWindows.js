@@ -9,6 +9,9 @@ const WEBVIEW_PRELOAD_PATH = 'preload/deepseek-webview-preload.js'
 const CHAT_WINDOW_BOUNDS_KEY = 'deepseek/chat-window-bounds'
 const WINDOW_BOUNDS_DEBOUNCE_MS = 250
 
+let activeChatWindow = null
+let chatWindowCreationPromise = null
+
 function normalizeWindowBounds(bounds) {
   if (!bounds || typeof bounds !== 'object') return null
 
@@ -318,6 +321,22 @@ async function ensureBrowserWindowActive(browserWindow) {
   return browserWindow
 }
 
+function getActiveChatWindow() {
+  if (!activeChatWindow) return null
+
+  try {
+    if (activeChatWindow.isDestroyed?.()) {
+      activeChatWindow = null
+      return null
+    }
+  } catch (error) {
+    activeChatWindow = null
+    return null
+  }
+
+  return activeChatWindow
+}
+
 function sendWindowPinState(browserWindow, runtimeWindowId, pinned) {
   try {
     browserWindow.webContents?.send?.('deepseek-window-pin-state', {
@@ -555,7 +574,23 @@ function buildSessionProbe(accountName) {
 }
 
 export async function openChatWindow(account) {
-  return createWindow(account)
+  const existingWindow = getActiveChatWindow()
+  if (existingWindow) {
+    return ensureBrowserWindowActive(existingWindow)
+  }
+
+  if (!chatWindowCreationPromise) {
+    chatWindowCreationPromise = createWindow(account)
+      .then((browserWindow) => {
+        activeChatWindow = browserWindow
+        return browserWindow
+      })
+      .finally(() => {
+        chatWindowCreationPromise = null
+      })
+  }
+
+  return chatWindowCreationPromise
 }
 
 export async function openDefaultChatWindow() {
