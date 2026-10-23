@@ -34,5 +34,18 @@ window.services = {
     return () => {
       ipcRenderer.removeListener('deepseek-window-pin-toggle', listener)
     }
+  },
+  onDeepSeekWindowBoundsSave (callback) {
+    if (typeof callback !== 'function') return () => {}
+
+    const listener = (_event, payload) => {
+      callback(payload)
+    }
+
+    ipcRenderer.on('deepseek-window-bounds-save', listener)
+
+    return () => {
+      ipcRenderer.removeListener('deepseek-window-bounds-save', listener)
+    }
   }
 }

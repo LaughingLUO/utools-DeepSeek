@@ -28,6 +28,23 @@ const runtimeRawUserToken = decodeRawToken(runtimeArgs['ds-raw-user-token'] || '
 
 bootstrap()
 
+let boundsSaveNotified = false
+
+function notifyParentBeforeClose() {
+  if (boundsSaveNotified) return
+  boundsSaveNotified = true
+
+  try {
+    utools.sendToParent('deepseek-window-bounds-save', {
+      windowId: runtimeWindowId
+    })
+  } catch (error) {
+    // Ignore notification failures during process shutdown.
+  }
+}
+
+window.addEventListener('beforeunload', notifyParentBeforeClose)
+
 async function bootstrap() {
   window.addEventListener('DOMContentLoaded', async () => {
     initializeTheme()

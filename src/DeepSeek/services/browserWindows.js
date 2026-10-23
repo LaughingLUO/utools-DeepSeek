@@ -1,10 +1,108 @@
 import { buildPartition, getDefaultAccount } from './accountStore'
+import { getPluginSettings } from './settingsStore'
 
 const DEEPSEEK_CHAT_URL = 'https://chat.deepseek.com/'
 const DEEPSEEK_SIGN_IN_URL = 'https://chat.deepseek.com/sign_in'
 const BROWSER_SHELL_PATH = 'browser-shell.html'
 const BROWSER_WINDOW_PRELOAD_PATH = 'preload/deepseek-browser-window.js'
 const WEBVIEW_PRELOAD_PATH = 'preload/deepseek-webview-preload.js'
+const CHAT_WINDOW_BOUNDS_KEY = 'deepseek/chat-window-bounds'
+const WINDOW_BOUNDS_DEBOUNCE_MS = 250
+
+function normalizeWindowBounds(bounds) {
+  if (!bounds || typeof bounds !== 'object') return null
+
+  const values = ['x', 'y', 'width', 'height'].map((key) => Number(bounds[key]))
+  if (values.some((value) => !Number.isFinite(value))) return null
+
+  const [x, y, width, height] = values
+  if (width < 660 || height < 440) return null
+
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
+  }
+}
+
+function readChatWindowBounds() {
+  try {
+    return normalizeWindowBounds(utools.dbStorage.getItem(CHAT_WINDOW_BOUNDS_KEY))
+  } catch (error) {
+    return null
+  }
+}
+
+function saveChatWindowBounds(browserWindow) {
+  try {
+    const bounds = normalizeWindowBounds(browserWindow?.getBounds?.())
+    if (bounds) {
+      utools.dbStorage.setItem(CHAT_WINDOW_BOUNDS_KEY, bounds)
+    }
+  } catch (error) {
+    // Ignore window/storage failures so closing the chat window remains safe.
+  }
+}
+
+function bindWindowBoundsPersistence(browserWindow, runtimeWindowId, enabled) {
+  if (!enabled || !browserWindow) return () => {}
+
+  let saveTimer = null
+  let pollTimer = null
+  let closed = false
+  let lastBounds = normalizeWindowBounds(browserWindow.getBounds?.())
+
+  const stop = () => {
+    closed = true
+    if (saveTimer) window.clearTimeout(saveTimer)
+    if (pollTimer) window.clearInterval(pollTimer)
+    saveTimer = null
+    pollTimer = null
+  }
+
+  const flush = () => {
+    if (saveTimer) {
+      window.clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    if (!closed) saveChatWindowBounds(browserWindow)
+    stop()
+  }
+
+  const scheduleSave = () => {
+    if (closed) return
+    if (saveTimer) window.clearTimeout(saveTimer)
+    saveTimer = window.setTimeout(() => {
+      saveTimer = null
+      saveChatWindowBounds(browserWindow)
+    }, WINDOW_BOUNDS_DEBOUNCE_MS)
+  }
+
+  // uTools 自定义窗口不提供 move/resize/close 实例事件，因此通过轻量轮询
+  // 读取窗口边界；检测到变化后再用防抖写入，避免拖动/缩放过程中频繁落盘。
+  pollTimer = window.setInterval(() => {
+    if (closed) return
+
+    try {
+      const nextBounds = normalizeWindowBounds(browserWindow.getBounds?.())
+      if (!nextBounds || JSON.stringify(nextBounds) === JSON.stringify(lastBounds)) return
+      lastBounds = nextBounds
+      scheduleSave()
+    } catch (error) {
+      // Ignore polling failures while the window is being destroyed.
+    }
+  }, WINDOW_BOUNDS_DEBOUNCE_MS)
+
+  const onBeforeClose = window.services?.onDeepSeekWindowBoundsSave
+  if (typeof onBeforeClose === 'function') {
+    onBeforeClose((payload) => {
+      if (payload?.windowId === runtimeWindowId) flush()
+    })
+  }
+
+  return flush
+}
 
 function buildWindowTitle(accountName) {
   return `${accountName} - DeepSeek`
@@ -164,13 +262,17 @@ function createWindow(account) {
   return new Promise((resolve, reject) => {
     let resolved = false
     const runtimeWindowId = buildRuntimeWindowId(account.id)
+    const rememberWindowBounds = getPluginSettings().rememberChatWindowBounds
+    const savedBounds = rememberWindowBounds ? readChatWindowBounds() : null
 
     const finalizeResolve = async (browserWindow) => {
       if (resolved) return
       resolved = true
-      try {
-        browserWindow.maximize?.()
-      } catch (error) {}
+      if (!savedBounds) {
+        try {
+          browserWindow.maximize?.()
+        } catch (error) {}
+      }
       const activeWindow = await ensureBrowserWindowActive(browserWindow)
       sendWindowPinState(activeWindow, runtimeWindowId, false)
       window.setTimeout(() => resolve(activeWindow), 120)
@@ -183,6 +285,7 @@ function createWindow(account) {
           show: false,
           width: 1440,
           height: 900,
+          ...(savedBounds || {}),
           minWidth: 660,
           minHeight: 440,
           title: buildWindowTitle(account.name),
@@ -203,6 +306,7 @@ function createWindow(account) {
         }
       )
 
+      bindWindowBoundsPersistence(browserWindow, runtimeWindowId, rememberWindowBounds)
       bindAlwaysOnTopBridge(browserWindow, runtimeWindowId)
 
       window.setTimeout(() => {

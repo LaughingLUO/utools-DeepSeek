@@ -1,8 +1,10 @@
 <script setup>
+import { reactive } from 'vue'
 import AccountBindDialog from './components/AccountBindDialog.vue'
 import AccountsTable from './components/AccountsTable.vue'
 import RenameAccountDialog from './components/RenameAccountDialog.vue'
 import { useDeepSeekAccounts } from './composables/useDeepSeekAccounts'
+import { getPluginSettings, updatePluginSettings } from './services/settingsStore'
 
 defineProps({
   enterAction: {
@@ -31,6 +33,15 @@ const {
   saveRename,
   removeAccount
 } = useDeepSeekAccounts()
+
+const settings = reactive(getPluginSettings())
+
+function updateRememberChatWindowBounds(event) {
+  settings.rememberChatWindowBounds = event.target.checked
+  updatePluginSettings({
+    rememberChatWindowBounds: settings.rememberChatWindowBounds
+  })
+}
 </script>
 
 <template>
@@ -57,6 +68,30 @@ const {
         @rename="openRenameDialog"
         @remove="removeAccount"
       />
+    </section>
+
+    <section class="settings-panel settings-panel--preferences">
+      <div class="settings-panel__header">
+        <div>
+          <h2 class="settings-panel__title">通用设置</h2>
+          <p class="settings-panel__description">控制 DeepSeek 聊天窗口的启动行为。</p>
+        </div>
+      </div>
+
+      <label class="settings-toggle">
+        <span class="settings-toggle__content">
+          <span class="settings-toggle__title">记住聊天窗口位置和大小</span>
+          <span class="settings-toggle__description">下次打开聊天窗口时恢复上次关闭前的位置和尺寸。</span>
+        </span>
+        <input
+          type="checkbox"
+          :checked="settings.rememberChatWindowBounds"
+          @change="updateRememberChatWindowBounds"
+        >
+        <span class="settings-toggle__track" aria-hidden="true">
+          <span class="settings-toggle__thumb" />
+        </span>
+      </label>
     </section>
 
     <AccountBindDialog
@@ -125,6 +160,73 @@ const {
 
 .settings-panel__title {
   font-size: 24px;
+}
+
+.settings-panel--preferences {
+  gap: 16px;
+}
+
+.settings-panel__description,
+.settings-toggle__description {
+  margin: 6px 0 0;
+  color: var(--muted-text);
+  font-size: 13px;
+}
+
+.settings-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 18px;
+  border: 1px solid var(--panel-border);
+  border-radius: 16px;
+  background: var(--panel-bg-soft, rgba(255, 255, 255, 0.04));
+  cursor: pointer;
+}
+
+.settings-toggle__content {
+  min-width: 0;
+}
+
+.settings-toggle__title {
+  display: block;
+  font-weight: 600;
+}
+
+.settings-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.settings-toggle__track {
+  display: inline-flex;
+  align-items: center;
+  width: 44px;
+  height: 24px;
+  flex: 0 0 44px;
+  padding: 3px;
+  border-radius: 999px;
+  background: var(--muted-text);
+  transition: background-color 160ms ease;
+}
+
+.settings-toggle__thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+  transition: transform 160ms ease;
+}
+
+.settings-toggle input:checked + .settings-toggle__track {
+  background: #4d6bfe;
+}
+
+.settings-toggle input:checked + .settings-toggle__track .settings-toggle__thumb {
+  transform: translateX(20px);
 }
 
 @media (max-width: 760px) {
