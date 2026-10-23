@@ -26,9 +26,43 @@ function normalizeWindowBounds(bounds) {
   }
 }
 
-function readChatWindowBounds() {
+function normalizeDisplayArea(area) {
+  if (!area || typeof area !== 'object') return null
+
+  const values = ['x', 'y', 'width', 'height'].map((key) => Number(area[key]))
+  if (values.some((value) => !Number.isFinite(value))) return null
+
+  const [x, y, width, height] = values
+  if (width <= 0 || height <= 0) return null
+
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
+  }
+}
+
+function normalizeWindowState(state) {
+  if (!state || typeof state !== 'object') return null
+
+  const bounds = normalizeWindowBounds(state.bounds || state)
+  if (!bounds) return null
+
+  return {
+    bounds,
+    displayId: Number.isFinite(Number(state.displayId)) ? Number(state.displayId) : null,
+    displayBounds: normalizeDisplayArea(state.displayBounds),
+    displayWorkArea: normalizeDisplayArea(state.displayWorkArea),
+    displayScaleFactor: Number.isFinite(Number(state.displayScaleFactor))
+      ? Number(state.displayScaleFactor)
+      : null
+  }
+}
+
+function readChatWindowState() {
   try {
-    return normalizeWindowBounds(utools.dbStorage.getItem(CHAT_WINDOW_BOUNDS_KEY))
+    return normalizeWindowState(utools.dbStorage.getItem(CHAT_WINDOW_BOUNDS_KEY))
   } catch (error) {
     return null
   }
@@ -37,12 +71,69 @@ function readChatWindowBounds() {
 function saveChatWindowBounds(browserWindow) {
   try {
     const bounds = normalizeWindowBounds(browserWindow?.getBounds?.())
-    if (bounds) {
-      utools.dbStorage.setItem(CHAT_WINDOW_BOUNDS_KEY, bounds)
-    }
+    if (!bounds) return
+
+    const display = utools.getDisplayMatching?.(bounds) || utools.getPrimaryDisplay?.()
+    utools.dbStorage.setItem(CHAT_WINDOW_BOUNDS_KEY, {
+      bounds,
+      displayId: display?.id ?? null,
+      displayBounds: display?.bounds || null,
+      displayWorkArea: display?.workArea || null,
+      displayScaleFactor: display?.scaleFactor ?? null
+    })
   } catch (error) {
     // Ignore window/storage failures so closing the chat window remains safe.
   }
+}
+
+function clampWindowBoundsToWorkArea(bounds, workArea) {
+  if (!bounds || !workArea) return bounds
+
+  const width = Math.min(Math.max(bounds.width, 660), Math.max(workArea.width, 660))
+  const height = Math.min(Math.max(bounds.height, 440), Math.max(workArea.height, 440))
+  const maxX = Math.max(workArea.x, workArea.x + workArea.width - width)
+  const maxY = Math.max(workArea.y, workArea.y + workArea.height - height)
+
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(bounds.x, workArea.x), maxX),
+    y: Math.min(Math.max(bounds.y, workArea.y), maxY)
+  }
+}
+
+function resolveRestoredWindowBounds(savedState) {
+  if (!savedState?.bounds) return null
+
+  let displays = []
+  try {
+    displays = utools.getAllDisplays?.() || []
+  } catch (error) {}
+
+  const savedDisplay = savedState.displayId === null
+    ? null
+    : displays.find((display) => Number(display.id) === savedState.displayId)
+  const targetDisplay = savedDisplay || utools.getPrimaryDisplay?.()
+  const targetWorkArea = targetDisplay?.workArea
+
+  if (!targetWorkArea) return savedState.bounds
+
+  let nextBounds = savedState.bounds
+  if (savedDisplay && savedState.displayWorkArea) {
+    nextBounds = {
+      ...savedState.bounds,
+      x: targetWorkArea.x + (savedState.bounds.x - savedState.displayWorkArea.x),
+      y: targetWorkArea.y + (savedState.bounds.y - savedState.displayWorkArea.y)
+    }
+  } else if (!savedDisplay) {
+    nextBounds = {
+      ...savedState.bounds,
+      x: targetWorkArea.x + Math.round((targetWorkArea.width - savedState.bounds.width) / 2),
+      y: targetWorkArea.y + Math.round((targetWorkArea.height - savedState.bounds.height) / 2)
+    }
+  }
+
+  return clampWindowBoundsToWorkArea(nextBounds, targetWorkArea)
 }
 
 function bindWindowBoundsPersistence(browserWindow, runtimeWindowId, enabled) {
@@ -263,7 +354,8 @@ function createWindow(account) {
     let resolved = false
     const runtimeWindowId = buildRuntimeWindowId(account.id)
     const rememberWindowBounds = getPluginSettings().rememberChatWindowBounds
-    const savedBounds = rememberWindowBounds ? readChatWindowBounds() : null
+    const savedWindowState = rememberWindowBounds ? readChatWindowState() : null
+    const savedBounds = resolveRestoredWindowBounds(savedWindowState)
 
     const finalizeResolve = async (browserWindow) => {
       if (resolved) return
