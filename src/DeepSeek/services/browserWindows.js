@@ -1,10 +1,205 @@
 import { buildPartition, getDefaultAccount } from './accountStore'
+import { getPluginSettings } from './settingsStore'
 
 const DEEPSEEK_CHAT_URL = 'https://chat.deepseek.com/'
 const DEEPSEEK_SIGN_IN_URL = 'https://chat.deepseek.com/sign_in'
 const BROWSER_SHELL_PATH = 'browser-shell.html'
 const BROWSER_WINDOW_PRELOAD_PATH = 'preload/deepseek-browser-window.js'
 const WEBVIEW_PRELOAD_PATH = 'preload/deepseek-webview-preload.js'
+const CHAT_WINDOW_BOUNDS_KEY = 'deepseek/chat-window-bounds'
+const WINDOW_BOUNDS_DEBOUNCE_MS = 250
+
+let activeChatWindow = null
+let chatWindowCreationPromise = null
+
+function normalizeWindowBounds(bounds) {
+  if (!bounds || typeof bounds !== 'object') return null
+
+  const values = ['x', 'y', 'width', 'height'].map((key) => Number(bounds[key]))
+  if (values.some((value) => !Number.isFinite(value))) return null
+
+  const [x, y, width, height] = values
+  if (width < 660 || height < 440) return null
+
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
+  }
+}
+
+function normalizeDisplayArea(area) {
+  if (!area || typeof area !== 'object') return null
+
+  const values = ['x', 'y', 'width', 'height'].map((key) => Number(area[key]))
+  if (values.some((value) => !Number.isFinite(value))) return null
+
+  const [x, y, width, height] = values
+  if (width <= 0 || height <= 0) return null
+
+  return {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.round(width),
+    height: Math.round(height)
+  }
+}
+
+function normalizeWindowState(state) {
+  if (!state || typeof state !== 'object') return null
+
+  const bounds = normalizeWindowBounds(state.bounds || state)
+  if (!bounds) return null
+
+  return {
+    bounds,
+    displayId: Number.isFinite(Number(state.displayId)) ? Number(state.displayId) : null,
+    displayBounds: normalizeDisplayArea(state.displayBounds),
+    displayWorkArea: normalizeDisplayArea(state.displayWorkArea),
+    displayScaleFactor: Number.isFinite(Number(state.displayScaleFactor))
+      ? Number(state.displayScaleFactor)
+      : null
+  }
+}
+
+function readChatWindowState() {
+  try {
+    return normalizeWindowState(utools.dbStorage.getItem(CHAT_WINDOW_BOUNDS_KEY))
+  } catch (error) {
+    return null
+  }
+}
+
+function saveChatWindowBounds(browserWindow) {
+  try {
+    const bounds = normalizeWindowBounds(browserWindow?.getBounds?.())
+    if (!bounds) return
+
+    const display = utools.getDisplayMatching?.(bounds) || utools.getPrimaryDisplay?.()
+    utools.dbStorage.setItem(CHAT_WINDOW_BOUNDS_KEY, {
+      bounds,
+      displayId: display?.id ?? null,
+      displayBounds: display?.bounds || null,
+      displayWorkArea: display?.workArea || null,
+      displayScaleFactor: display?.scaleFactor ?? null
+    })
+  } catch (error) {
+    // Ignore window/storage failures so closing the chat window remains safe.
+  }
+}
+
+function clampWindowBoundsToWorkArea(bounds, workArea) {
+  if (!bounds || !workArea) return bounds
+
+  const width = Math.min(Math.max(bounds.width, 660), Math.max(workArea.width, 660))
+  const height = Math.min(Math.max(bounds.height, 440), Math.max(workArea.height, 440))
+  const maxX = Math.max(workArea.x, workArea.x + workArea.width - width)
+  const maxY = Math.max(workArea.y, workArea.y + workArea.height - height)
+
+  return {
+    width,
+    height,
+    x: Math.min(Math.max(bounds.x, workArea.x), maxX),
+    y: Math.min(Math.max(bounds.y, workArea.y), maxY)
+  }
+}
+
+function resolveRestoredWindowBounds(savedState) {
+  if (!savedState?.bounds) return null
+
+  let displays = []
+  try {
+    displays = utools.getAllDisplays?.() || []
+  } catch (error) {}
+
+  const savedDisplay = savedState.displayId === null
+    ? null
+    : displays.find((display) => Number(display.id) === savedState.displayId)
+  const targetDisplay = savedDisplay || utools.getPrimaryDisplay?.()
+  const targetWorkArea = targetDisplay?.workArea
+
+  if (!targetWorkArea) return savedState.bounds
+
+  let nextBounds = savedState.bounds
+  if (savedDisplay && savedState.displayWorkArea) {
+    // createBrowserWindow/getBounds already use logical pixels. Do not apply
+    // display scale factors to width/height here: doing so changes a saved
+    // 100%/150% window into 2/3 or 3/2 of its remembered size.
+    nextBounds = {
+      ...savedState.bounds,
+      x: targetWorkArea.x + (savedState.bounds.x - savedState.displayWorkArea.x),
+      y: targetWorkArea.y + (savedState.bounds.y - savedState.displayWorkArea.y)
+    }
+  } else if (!savedDisplay) {
+    nextBounds = {
+      ...savedState.bounds,
+      x: targetWorkArea.x + Math.round((targetWorkArea.width - savedState.bounds.width) / 2),
+      y: targetWorkArea.y + Math.round((targetWorkArea.height - savedState.bounds.height) / 2)
+    }
+  }
+
+  return clampWindowBoundsToWorkArea(nextBounds, targetWorkArea)
+}
+
+function bindWindowBoundsPersistence(browserWindow, runtimeWindowId, enabled) {
+  if (!enabled || !browserWindow) return () => {}
+
+  let saveTimer = null
+  let pollTimer = null
+  let closed = false
+  let lastBounds = normalizeWindowBounds(browserWindow.getBounds?.())
+
+  const stop = () => {
+    closed = true
+    if (saveTimer) window.clearTimeout(saveTimer)
+    if (pollTimer) window.clearInterval(pollTimer)
+    saveTimer = null
+    pollTimer = null
+  }
+
+  const flush = () => {
+    if (saveTimer) {
+      window.clearTimeout(saveTimer)
+      saveTimer = null
+    }
+    if (!closed) saveChatWindowBounds(browserWindow)
+    stop()
+  }
+
+  const scheduleSave = () => {
+    if (closed) return
+    if (saveTimer) window.clearTimeout(saveTimer)
+    saveTimer = window.setTimeout(() => {
+      saveTimer = null
+      saveChatWindowBounds(browserWindow)
+    }, WINDOW_BOUNDS_DEBOUNCE_MS)
+  }
+
+  // uTools 自定义窗口不提供 move/resize/close 实例事件，因此通过轻量轮询
+  // 读取窗口边界；检测到变化后再用防抖写入，避免拖动/缩放过程中频繁落盘。
+  pollTimer = window.setInterval(() => {
+    if (closed) return
+
+    try {
+      const nextBounds = normalizeWindowBounds(browserWindow.getBounds?.())
+      if (!nextBounds || JSON.stringify(nextBounds) === JSON.stringify(lastBounds)) return
+      lastBounds = nextBounds
+      scheduleSave()
+    } catch (error) {
+      // Ignore polling failures while the window is being destroyed.
+    }
+  }, WINDOW_BOUNDS_DEBOUNCE_MS)
+
+  const onBeforeClose = window.services?.onDeepSeekWindowBoundsSave
+  if (typeof onBeforeClose === 'function') {
+    onBeforeClose((payload) => {
+      if (payload?.windowId === runtimeWindowId) flush()
+    })
+  }
+
+  return flush
+}
 
 function buildWindowTitle(accountName) {
   return `${accountName} - DeepSeek`
@@ -129,6 +324,22 @@ async function ensureBrowserWindowActive(browserWindow) {
   return browserWindow
 }
 
+function getActiveChatWindow() {
+  if (!activeChatWindow) return null
+
+  try {
+    if (activeChatWindow.isDestroyed?.()) {
+      activeChatWindow = null
+      return null
+    }
+  } catch (error) {
+    activeChatWindow = null
+    return null
+  }
+
+  return activeChatWindow
+}
+
 function sendWindowPinState(browserWindow, runtimeWindowId, pinned) {
   try {
     browserWindow.webContents?.send?.('deepseek-window-pin-state', {
@@ -164,13 +375,27 @@ function createWindow(account) {
   return new Promise((resolve, reject) => {
     let resolved = false
     const runtimeWindowId = buildRuntimeWindowId(account.id)
+    const rememberWindowBounds = getPluginSettings().rememberChatWindowBounds
+    const savedWindowState = rememberWindowBounds ? readChatWindowState() : null
+    const savedBounds = resolveRestoredWindowBounds(savedWindowState)
 
     const finalizeResolve = async (browserWindow) => {
       if (resolved) return
       resolved = true
-      try {
-        browserWindow.maximize?.()
-      } catch (error) {}
+      if (savedBounds) {
+        // uTools may interpret the constructor size using the primary display
+        // before the window is moved to its saved display. Apply the saved
+        // logical bounds again after the page has loaded, when the window is
+        // already associated with the target display.
+        try {
+          browserWindow.setBounds?.(savedBounds)
+        } catch (error) {}
+      }
+      if (!savedBounds) {
+        try {
+          browserWindow.maximize?.()
+        } catch (error) {}
+      }
       const activeWindow = await ensureBrowserWindowActive(browserWindow)
       sendWindowPinState(activeWindow, runtimeWindowId, false)
       window.setTimeout(() => resolve(activeWindow), 120)
@@ -183,6 +408,7 @@ function createWindow(account) {
           show: false,
           width: 1440,
           height: 900,
+          ...(savedBounds || {}),
           minWidth: 660,
           minHeight: 440,
           title: buildWindowTitle(account.name),
@@ -203,6 +429,7 @@ function createWindow(account) {
         }
       )
 
+      bindWindowBoundsPersistence(browserWindow, runtimeWindowId, rememberWindowBounds)
       bindAlwaysOnTopBridge(browserWindow, runtimeWindowId)
 
       window.setTimeout(() => {
@@ -359,7 +586,23 @@ function buildSessionProbe(accountName) {
 }
 
 export async function openChatWindow(account) {
-  return createWindow(account)
+  const existingWindow = getActiveChatWindow()
+  if (existingWindow) {
+    return ensureBrowserWindowActive(existingWindow)
+  }
+
+  if (!chatWindowCreationPromise) {
+    chatWindowCreationPromise = createWindow(account)
+      .then((browserWindow) => {
+        activeChatWindow = browserWindow
+        return browserWindow
+      })
+      .finally(() => {
+        chatWindowCreationPromise = null
+      })
+  }
+
+  return chatWindowCreationPromise
 }
 
 export async function openDefaultChatWindow() {
