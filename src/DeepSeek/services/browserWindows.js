@@ -123,6 +123,9 @@ function resolveRestoredWindowBounds(savedState) {
 
   let nextBounds = savedState.bounds
   if (savedDisplay && savedState.displayWorkArea) {
+    // createBrowserWindow/getBounds already use logical pixels. Do not apply
+    // display scale factors to width/height here: doing so changes a saved
+    // 100%/150% window into 2/3 or 3/2 of its remembered size.
     nextBounds = {
       ...savedState.bounds,
       x: targetWorkArea.x + (savedState.bounds.x - savedState.displayWorkArea.x),
@@ -379,6 +382,15 @@ function createWindow(account) {
     const finalizeResolve = async (browserWindow) => {
       if (resolved) return
       resolved = true
+      if (savedBounds) {
+        // uTools may interpret the constructor size using the primary display
+        // before the window is moved to its saved display. Apply the saved
+        // logical bounds again after the page has loaded, when the window is
+        // already associated with the target display.
+        try {
+          browserWindow.setBounds?.(savedBounds)
+        } catch (error) {}
+      }
       if (!savedBounds) {
         try {
           browserWindow.maximize?.()
